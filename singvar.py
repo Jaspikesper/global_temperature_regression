@@ -1,12 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-# Attempt to import mplcyberpunk for the Cyberpunk theme.
-try:
-    import mplcyberpunk
-except ImportError:
-    mplcyberpunk = None
-
+import mplcyberpunk
 
 def regression_plot(xvar, yvar, theme=1):
     """
