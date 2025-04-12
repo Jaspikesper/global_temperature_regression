@@ -2,10 +2,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import mplcyberpunk
-
+import single_variable_regression as singvar
+#Testedit
 def regression_plot(xvar, yvar, theme=1):
     """
-    Scatter the data and overlay the least‐squares regression line.
+    Scatterplot the data and overlay the least‐squares regression line.
     Themes (by index):
       1. cyberpunk
       2. wild west
@@ -14,16 +15,12 @@ def regression_plot(xvar, yvar, theme=1):
       5. angelic
     """
     # 1. Compute slope, intercept, and R²
-    mhat = np.cov(xvar, yvar)[0, 1] / np.var(xvar)
-    bhat = np.mean(yvar) - mhat * np.mean(xvar)
-    r = np.corrcoef(xvar, yvar)[0, 1]
-    r2 = r**2
-
+    mhat, bhat, r, r2 = singvar.regress(xvar, yvar)
     # 2. Print the regression info
     print(f"  slope (m)     = {mhat:.4f}")
     print(f"  intercept (b) = {bhat:.4f}")
     print(f"  R²            = {r2:.4f}")
-
+    
     # 3. Build the line over the data range
     x_line = np.array([xvar.min(), xvar.max()])
     y_line = mhat * x_line + bhat
@@ -31,15 +28,12 @@ def regression_plot(xvar, yvar, theme=1):
     # 4. Plot
     fig, ax = plt.subplots()
 
-    # pick a human‑readable name
+    # cool themes
     theme_names = ["cyberpunk", "wild west", "minimalist", "communist", "angelic"]
     theme_name = theme_names[theme-1] if 1 <= theme <= 5 else str(theme)
 
     if theme == 1:
         # cyberpunk
-        if mplcyberpunk is None:
-            print("Install mplcyberpunk for the Cyberpunk theme.")
-            return
         plt.style.use("cyberpunk")
         ax.set_facecolor('#1f1f1f')
         fig.patch.set_facecolor('#1f1f1f')
@@ -75,13 +69,13 @@ def regression_plot(xvar, yvar, theme=1):
         text_color = 'black'
 
     elif theme == 4:
-        # communist
-        ax.set_facecolor('#1a0000')
-        fig.patch.set_facecolor('#1a0000')
+        # communist CC0000
+        ax.set_facecolor('#CC0000')
+        fig.patch.set_facecolor('#CC0000')
 
         ax.scatter(xvar, yvar, color='red', marker='o', s=50, edgecolors='orange')
         ax.plot(x_line, y_line, color='red', linewidth=2)
-        ax.grid(True, linestyle="--", linewidth=1, color='#8B0000')
+        ax.grid(True, linestyle="--", linewidth=1, color='#FFD700')
         text_color = 'yellow'
 
     elif theme == 5:
@@ -110,10 +104,3 @@ def regression_plot(xvar, yvar, theme=1):
     plt.tight_layout()
     plt.show()
 
-
-if __name__ == "__main__":
-    # demo with your CSV
-    data = pd.read_csv('merged_co2_temp.csv')
-    x = data['mean'].values
-    y = data['temp_anomaly'].values
-    regression_plot(x, y, theme=1)
