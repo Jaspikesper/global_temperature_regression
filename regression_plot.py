@@ -4,7 +4,7 @@ import pandas as pd
 import mplcyberpunk
 import single_variable_regression as singvar
 #Testedit
-def regression_plot(xvar, yvar, theme=1):
+def regression_plot(xvar, yvar, mhat, bhat, r, r2, theme=1):
     """
     Scatterplot the data and overlay the least‐squares regression line.
     Themes (by index):
@@ -15,7 +15,6 @@ def regression_plot(xvar, yvar, theme=1):
       5. angelic
     """
     # 1. Compute slope, intercept, and R²
-    mhat, bhat, r, r2 = singvar.regress(xvar, yvar)
     # 2. Print the regression info
     print(f"  slope (m)     = {mhat:.4f}")
     print(f"  intercept (b) = {bhat:.4f}")
