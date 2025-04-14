@@ -31,7 +31,8 @@ def regression_plot(xvar, yvar, mhat, bhat, r, r2, theme=1):
         plt.style.use("cyberpunk")
         ax.set_facecolor('#1f1f1f')
         fig.patch.set_facecolor('#1f1f1f')
-        ax.scatter(xvar, yvar, color='#00ffff', s=40, edgecolors='none')
+        ax.scatter([xvar[0]], [yvar[0]], color='#00ffff', s=40, edgecolors='none', alpha=0)
+        ax.scatter(xvar[1:], yvar[1:], color='#00ffff', s=40, edgecolors='none')
         ax.plot(x_line, y_line, color='#ff00ff', linewidth=2)
         mplcyberpunk.add_glow_effects()
         text_color = 'white'
@@ -39,7 +40,8 @@ def regression_plot(xvar, yvar, mhat, bhat, r, r2, theme=1):
     elif theme == 2:
         ax.set_facecolor('#f4e2d8')
         fig.patch.set_facecolor('#f4e2d8')
-        ax.scatter(xvar, yvar, color='#6b4423', marker='x', s=50)
+        ax.scatter([xvar[0]], [yvar[0]], color='#6b4423', marker='x', s=50, alpha=0)
+        ax.scatter(xvar[1:], yvar[1:], color='#6b4423', marker='x', s=50)
         ax.plot(x_line, y_line, color='#6b4423', linewidth=2)
         ax.grid(True, linestyle='-', linewidth=1, color='#c2b280')
         text_color = 'black'
@@ -47,7 +49,8 @@ def regression_plot(xvar, yvar, mhat, bhat, r, r2, theme=1):
     elif theme == 3:
         ax.set_facecolor('white')
         fig.patch.set_facecolor('white')
-        ax.scatter(xvar, yvar, color='black', s=30)
+        ax.scatter([xvar[0]], [yvar[0]], color='black', s=30, alpha=0)
+        ax.scatter(xvar[1:], yvar[1:], color='black', s=30)
         ax.plot(x_line, y_line, color='black', linewidth=2)
         ax.grid(False)
         for spine in ax.spines.values():
@@ -60,7 +63,8 @@ def regression_plot(xvar, yvar, mhat, bhat, r, r2, theme=1):
     elif theme == 4:
         ax.set_facecolor('#CC0000')
         fig.patch.set_facecolor('#CC0000')
-        ax.scatter(xvar, yvar, color='red', marker='o', s=50, edgecolors='orange')
+        ax.scatter([xvar[0]], [yvar[0]], color='red', marker='o', s=50, edgecolors='orange', alpha=0)
+        ax.scatter(xvar[1:], yvar[1:], color='red', marker='o', s=50, edgecolors='orange')
         ax.plot(x_line, y_line, color='red', linewidth=2)
         ax.grid(True, linestyle="--", linewidth=1, color='#FFD700')
         text_color = 'yellow'
@@ -68,14 +72,16 @@ def regression_plot(xvar, yvar, mhat, bhat, r, r2, theme=1):
     elif theme == 5:
         ax.set_facecolor('white')
         fig.patch.set_facecolor('white')
-        ax.scatter(xvar, yvar, color='#87ceeb', s=40)
+        ax.scatter([xvar[0]], [yvar[0]], color='#87ceeb', s=40, alpha=0)
+        ax.scatter(xvar[1:], yvar[1:], color='#87ceeb', s=40)
         ax.plot(x_line, y_line, color='#4682b4', linewidth=2)
         ax.grid(True, linestyle="--", linewidth=1, color='#e0f7fa')
         plt.rcParams.update({'font.family': 'DejaVu Sans'})
         text_color = '#4682b4'
 
     else:
-        ax.scatter(xvar, yvar, color='black', s=30)
+        ax.scatter([xvar[0]], [yvar[0]], color='black', s=30, alpha=0)
+        ax.scatter(xvar[1:], yvar[1:], color='black', s=30)
         ax.plot(x_line, y_line, color='black', linewidth=2)
         text_color = 'black'
 

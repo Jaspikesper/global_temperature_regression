@@ -16,5 +16,7 @@ def linear_regression(xvar, yvar):
 
     return mhat, bhat, r, r2
 
-def predict():
-    print("not implemented yet")
+def predict(x_fit, y_fit, mhat, bhat):
+    n = len(x_fit)
+    mse = (1/n) * np.sum((y_fit - x_fit * mhat + bhat)**2)
+    print('Prediction MSE is: ' + str(mse))
