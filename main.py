@@ -6,10 +6,11 @@ from regression_plot import *
 
 if __name__ == "__main__":
 
-    data = pd.read_csv('merged_co2_temp.csv')
-    x = data['mean'].values
-    y = data['temp_anomaly'].values
-
+    data = pd.read_csv('Temperature_Data.csv')
+   # x = data['mean'].values
+   # y = data['temp_anomaly'].values
+    x = data['year']
+    y = data['temp_anomaly']
     n = len(x)
     split = 0.8
     N = int(split*n)
@@ -22,8 +23,6 @@ if __name__ == "__main__":
 
     mhat, bhat, r, r2 = linear_regression(x_fit, y_fit) # <- This could be any regression function
     single_variable_regression.predict(x_fit, y_fit, mhat, bhat)
-    fig, ax = regression_plot(x_test, y_test, mhat, bhat, r, r2)
-    ax.set_xlim(x[0])
-    ax.set_ylim(0)
+    fig, ax = regression_plot(x, y, mhat, bhat, r, r2)
     plt.show()
     print('done!')
