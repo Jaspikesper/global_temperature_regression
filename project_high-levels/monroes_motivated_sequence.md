@@ -4,7 +4,7 @@
 **Climate change is happening**
 
 ### 2. Need
-**Environmental damage, climate, denial**
+**Environmental damage, climate denial**
 
 ### 3. Satisfaction
 **Examine data, determine trend**
