@@ -1,4 +1,4 @@
-year,mean,temp_anomaly,5yr_avg
+year,mean,temperature_anomaly,5yr_avg
 1990.0,354.45,0.45,0.33
 1991.0,355.70,0.41,0.33
 1992.0,356.54,0.22,0.33

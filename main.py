@@ -19,7 +19,7 @@ def _import_matplotlib():
 plt, mpimg = _import_matplotlib()
 from scipy.optimize import curve_fit
 from statsmodels.nonparametric.smoothers_lowess import lowess
-from data.temperature_data_loader import x, y
+from data_loader import x, y
 
 # ---------- Fit helpers ----------
 
