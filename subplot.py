@@ -1,186 +1,205 @@
 #!/usr/bin/env python3
 """
-Interactive Regression Explorer
+Interactive Regression Explorer ‑‑ **sun‑fixed edition**
 
-Dependencies:
+Dependencies
+────────────────
     • numpy
     • scipy
     • statsmodels
     • matplotlib (TkAgg backend)
     • tkinter (built‑in)
     • data_loader module with:
-        - load_temperature_data() -> (x: np.ndarray, y: np.ndarray)
-        - load_co2_data()       -> (x: np.ndarray, y: np.ndarray)
-        - load_gis_data()       -> (x: np.ndarray, y: np.ndarray)
+        - load_temperature_data() -> (x, y)
+        - load_co2_data()         -> (x, y)
+        - load_gis_data()         -> (x, y)
 """
 
 import numpy as np
+from functools import partial
 from scipy.optimize import curve_fit
 from statsmodels.nonparametric.smoothers_lowess import lowess
 
 import matplotlib
-matplotlib.use('TkAgg')
+matplotlib.use('TkAgg')                     # force interactive backend
 import matplotlib.pyplot as plt
 plt.rcParams['backend'] = 'TkAgg'
 
+import matplotlib.image as mpimg
 import tkinter as tk
 from tkinter import ttk, messagebox
-from functools import partial
 
-# ── Fit functions ──────────────────────────────────────────────────────────────
+
+# ───────────────────── Fit helpers ─────────────────────
+
 def poly_fit(degree: int):
-    """Return a function that fits a polynomial of given degree."""
     def fit(x: np.ndarray, y: np.ndarray):
         coeffs = np.polyfit(x, y, degree)
         return lambda x_new: np.polyval(coeffs, x_new)
     return fit
 
 def exp_fit(x: np.ndarray, y: np.ndarray):
-    """Fit an exponential model y = c·exp(r·x) + b."""
-    def model(x_vals: np.ndarray, c: float, r: float, b: float):
+    def model(x_vals: np.ndarray, c, r, b):
         return c * np.exp(r * x_vals) + b
     params, _ = curve_fit(model, x, y, p0=(y[0], 0.01, 0))
     return lambda x_new: model(x_new, *params)
 
 def loess_fit(x: np.ndarray, y: np.ndarray, frac: float = 0.3):
-    """Fit a LOESS smoother and interpolate."""
-    sm = lowess(y, x, frac=frac, return_sorted=True)
-    xs, ys = sm[:,0], sm[:,1]
+    smoothed = lowess(y, x, frac=frac, return_sorted=True)
+    xs, ys = smoothed[:, 0], smoothed[:, 1]
     return lambda x_new: np.interp(x_new, xs, ys)
 
-# ── Plotting helper ────────────────────────────────────────────────────────────
+
+# ────────────── Plot‑creation helper ──────────────
+
 def plot_regression(x: np.ndarray,
                     y: np.ndarray,
                     fit_func,
+                    *,
                     title: str,
                     xlabel: str,
                     ylabel: str,
                     scatter_size: int = 50,
-                    future_end: int = None):
-    """Scatter and regression line with interactivity."""
-    fig, ax = plt.subplots()
-    ax.scatter(x, y, s=scatter_size, label='Data', zorder=2)
+                    future_end: int | None = None,
+                    show_background: bool = False):
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    ax.set_facecolor("#ffffff")
+
     model = fit_func(x, y)
+
     last_x = int(x.max())
     x_line = np.arange(x.min(), (future_end or last_x) + 1)
-    y_line = model(x_line)
-    ax.plot(x_line, y_line, label='Fit', zorder=3)
+    ax.plot(x_line, model(x_line), label="Fit", zorder=3)
+
     if future_end and future_end > last_x:
-        ax.plot(np.arange(last_x + 1, future_end + 1), model(np.arange(last_x + 1, future_end + 1)),
-                linestyle='--', label='Future', zorder=3)
-        ax.axvline(last_x, linestyle=':', linewidth=1)
+        fut_x = np.arange(last_x + 1, future_end + 1)
+        ax.plot(fut_x, model(fut_x), "--", label="Future", zorder=3)
+        ax.axvline(last_x, linestyle=":", linewidth=1)
+
+    # Get limits after plotting so they are accurate
+    x0, x1 = ax.get_xlim()
+    y0, y1 = ax.get_ylim()
+
+    if show_background:
+        try:
+            bg_img = mpimg.imread("static/example2.png")
+            ax.imshow(bg_img, aspect='auto', extent=(x0, x1, y0, 1.33*y1), zorder=0)
+        except Exception as exc:
+            print(f"Warning: could not load sun image: {exc}")
+
+    ax.scatter(x, y, s=scatter_size, label="Data", zorder=2)
     ax.set(title=title, xlabel=xlabel, ylabel=ylabel)
     ax.legend()
 
-    # Add annotation and halo
-    ann = ax.annotate('', xy=(0,0), xytext=(10,10), textcoords='offset points',
-                      bbox=dict(boxstyle='round', fc='w'), arrowprops=dict(arrowstyle='->'))
+    halo, = ax.plot([], [], "o", ms=np.sqrt(scatter_size) * 2,
+                    mfc="none", mec="yellow", mew=2, zorder=4)
+    ann = ax.annotate("", xy=(0, 0), xytext=(10, 10),
+                      textcoords="offset points",
+                      bbox=dict(boxstyle="round", fc="w"),
+                      arrowprops=dict(arrowstyle="->"),
+                      zorder=5)
     ann.set_visible(False)
-    halo, = ax.plot([], [], 'o', ms=np.sqrt(scatter_size)*2, mec='yellow', mfc='none', mew=2, zorder=4)
 
     def on_move(event):
-        if event.inaxes != ax:
+        if event.inaxes is not ax or event.xdata is None:
             ann.set_visible(False)
             halo.set_data([], [])
             fig.canvas.draw_idle()
             return
+
         year = int(round(event.xdata))
-        min_year = int(x.min())
-        max_year = future_end if future_end else last_x
-        year = max(min(year, max_year), min_year)
+        year = max(min(year, future_end or last_x), int(x.min()))
         idx = np.where(x == year)[0]
-        if idx.size > 0:
-            obs_str = f"{y[idx[0]]:.2f}"
-            y_val = y[idx[0]]
+
+        if idx.size:
+            obs_val = y[idx[0]]
+            disp_obs = f"{obs_val:.2f}"
+            y_val = obs_val
         else:
-            obs_str = '-'
+            disp_obs = "–"
             y_val = model(year)
-        pred = model(year)
+
         ann.xy = (year, y_val)
-        ann.set_text(f"Year: {year}\nObserved: {obs_str}\nPredicted: {pred:.2f}")
+        ann.set_text(f"Year : {year}\nObs  : {disp_obs}\nPred: {model(year):.2f}")
         halo.set_data([year], [y_val])
         ann.set_visible(True)
         fig.canvas.draw_idle()
 
-    fig.canvas.mpl_connect('motion_notify_event', on_move)
+    fig.canvas.mpl_connect("motion_notify_event", on_move)
     plt.show()
 
-# ── GUI application ───────────────────────────────────────────────────────────
+
 class RegressionApp(tk.Tk):
-    """Main window: select dataset, method, and options."""
     def __init__(self):
         super().__init__()
         self.title("Regression Explorer")
 
-        # Map button labels → data loader functions
         import data_loader
         self.datasets = {
             "Temperature": data_loader.load_temperature_data,
-            "CO2 & Temp":  data_loader.load_co2_data,
-            "GIS":         data_loader.load_gis_data,
+            "CO2 & Temp": data_loader.load_co2_data,
+            "GIS": data_loader.load_gis_data,
         }
 
-        # Map method names → fitting callables
         self.methods = {
-            "Linear":      poly_fit(1),
-            "Quadratic":   poly_fit(2),
-            "Cubic":       poly_fit(3),
-            "Quartic":     poly_fit(4),
+            "Linear": poly_fit(1),
+            "Quadratic": poly_fit(2),
+            "Cubic": poly_fit(3),
+            "Quartic": poly_fit(4),
             "Exponential": exp_fit,
-            "LOESS":       loess_fit,
+            "LOESS": loess_fit,
         }
 
         self._build_ui()
 
     def _build_ui(self):
-        # Dataset selection buttons
         ds_frame = ttk.LabelFrame(self, text="Dataset")
-        ds_frame.pack(fill='x', padx=10, pady=5)
+        ds_frame.pack(fill="x", padx=10, pady=5)
         for name, loader in self.datasets.items():
-            btn = ttk.Button(ds_frame, text=name,
-                             command=partial(self._on_plot, loader))
-            btn.pack(side='left', padx=5)
+            ttk.Button(ds_frame, text=name,
+                       command=partial(self._on_plot, loader)).pack(side="left", padx=5)
 
-        # Control panel
         ctrl = ttk.Frame(self)
-        ctrl.pack(fill='x', padx=10, pady=5)
+        ctrl.pack(fill="x", padx=10, pady=5)
 
-        ttk.Label(ctrl, text="Method:").grid(row=0, column=0, sticky='w')
+        ttk.Label(ctrl, text="Method:").grid(row=0, column=0, sticky="w")
         self.method_var = tk.StringVar(value="Linear")
         ttk.Combobox(ctrl, textvariable=self.method_var,
-                     values=list(self.methods.keys()),
-                     state='readonly') \
-            .grid(row=0, column=1, padx=5, pady=2)
+                     values=list(self.methods),
+                     state="readonly").grid(row=0, column=1, padx=5, pady=2)
 
-        ttk.Label(ctrl, text="Future End:").grid(row=1, column=0, sticky='w')
+        ttk.Label(ctrl, text="Future End:").grid(row=1, column=0, sticky="w")
         self.future_var = tk.IntVar(value=2050)
-        ttk.Entry(ctrl, textvariable=self.future_var, width=10) \
-            .grid(row=1, column=1, padx=5, pady=2)
+        ttk.Entry(ctrl, textvariable=self.future_var, width=10).grid(row=1, column=1, padx=5, pady=2)
 
-        ttk.Label(ctrl, text="Scatter Size:").grid(row=2, column=0, sticky='w')
+        ttk.Label(ctrl, text="Scatter Size:").grid(row=2, column=0, sticky="w")
         self.scatter_var = tk.IntVar(value=50)
-        ttk.Entry(ctrl, textvariable=self.scatter_var, width=10) \
-            .grid(row=2, column=1, padx=5, pady=2)
+        ttk.Entry(ctrl, textvariable=self.scatter_var, width=10).grid(row=2, column=1, padx=5, pady=2)
 
-        ttk.Button(self, text="Quit", command=self.destroy) \
-            .pack(pady=10)
+        ttk.Label(ctrl, text="Show Sun Background:").grid(row=3, column=0, sticky="w")
+        self.bg_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(ctrl, variable=self.bg_var).grid(row=3, column=1, sticky="w")
 
-    def _on_plot(self, loader_func):
+        ttk.Button(self, text="Quit", command=self.destroy).pack(pady=10)
+
+    def _on_plot(self, loader):
         try:
-            x, y = loader_func()
-        except Exception as e:
-            return messagebox.showerror("Load Error", str(e))
+            x, y = loader()
+        except Exception as exc:
+            messagebox.showerror("Load error", str(exc))
+            return
 
         fit = self.methods[self.method_var.get()]
         plot_regression(
-            x, y,
-            fit,
+            x, y, fit,
             title=f"{self.method_var.get()} Fit",
-            xlabel="Year",
-            ylabel="Value",
+            xlabel="Year", ylabel="Value",
             scatter_size=self.scatter_var.get(),
-            future_end=self.future_var.get()
+            future_end=self.future_var.get(),
+            show_background=self.bg_var.get(),
         )
+
 
 if __name__ == "__main__":
     RegressionApp().mainloop()
