@@ -89,7 +89,7 @@ def plot_regression(x: np.ndarray,
 
 
     halo, = ax.plot([], [], "o", ms=np.sqrt(scatter_size) * 2,
-                    mfc="none", mec="yellow", mew=2, zorder=4)
+                    mfc="none", mec="green", mew=2, zorder=4)
     ann = ax.annotate("", xy=(0, 0), xytext=(10, 10),
                       textcoords="offset points",
                       bbox=dict(boxstyle="round", fc="w"),

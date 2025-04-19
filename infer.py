@@ -11,11 +11,11 @@ def long_term_inference(
         yobs: np.ndarray,
         *,
         start_year: int = 1000,
-        end_year: int = 1950,
+        end_year: int = 2025,
         title: str | None = None,
         xlabel: str = "Year",
         ylabel: str = "Value",
-        scatter_size: int = 60,
+        scatter_size: int = 50,
 ) -> tuple[plt.Figure, plt.Axes]:
     """
     Plot historical inference for a *fitted_model* over [start_year, end_year].
@@ -71,8 +71,6 @@ def long_term_inference(
 
     # Scatter observed points (only those falling in the [start, end] range)
     in_range = (xobs >= start_year) & (xobs <= end_year)
-    ax.scatter(xobs[in_range], yobs[in_range],
-               s=scatter_size, c="black", label="Observed", zorder=3)
 
     # Labels / legend
     ax.set(xlabel=xlabel, ylabel=ylabel,

@@ -207,11 +207,12 @@ class RegressionApp(tk.Tk):
     def _build_ui(self):
         ds_frame = ttk.LabelFrame(self, text="Dataset")
         ds_frame.pack(fill="x", padx=10, pady=5)
+        self._selected_loader = next(iter(self.datasets.values()))  # default loader
         for name, loader in self.datasets.items():
             ttk.Button(
                 ds_frame,
                 text=name,
-                command=partial(self._on_plot, loader),
+                command=partial(self._on_dataset_select, loader),
             ).pack(side="left", padx=5)
 
         ctrl = ttk.Frame(self)
@@ -238,13 +239,21 @@ class RegressionApp(tk.Tk):
             ctrl, textvariable=self.scatter_var, width=10
         ).grid(row=2, column=1, padx=5, pady=2)
 
-        ttk.Label(ctrl, text="Show Sun Background:").grid(
-            row=3, column=0, sticky="w"
-        )
+        ttk.Label(ctrl, text="Show Sun Background:").grid(row=3, column=0, sticky="w")
         self.bg_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(ctrl, variable=self.bg_var).grid(row=3, column=1, sticky="w")
 
-        ttk.Button(self, text="Quit", command=self.destroy).pack(pady=10)
+        btn_frame = ttk.Frame(self)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Done", command=self._on_done).pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="Quit", command=self.destroy).pack(side="left", padx=5)
+
+    def _on_dataset_select(self, loader):
+        self._selected_loader = loader
+
+    def _on_done(self):
+        self._on_plot(self._selected_loader)
+        self.after(100, self.destroy)  # Delay destruction slightly to avoid conflict with plot window
 
     # Callback -----------------------------------------
     def _on_plot(self, loader):
@@ -298,7 +307,7 @@ def run():
         y_long,
         start_year=1000,
         end_year=1950,
-        title="Historical reconstruction (1000‑1950)",
+        title="Historical reconstruction (1000‑2024)",
     )
 
     ax.scatter(x_long, y_long, s=25, c="blue",  # plot long observations
