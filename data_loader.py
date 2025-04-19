@@ -1,5 +1,5 @@
 # data_loader.py
-"""Tiny CSV loader helpers returns (x, y) NumPy arrays for the three datasets."""
+"""CSV loader helpers returns (x, y) NumPy arrays for the three datasets."""
 
 from pathlib import Path
 import pandas as pd
@@ -11,6 +11,7 @@ _FILES = {
     'temperature': ('Temperature_Data.csv', 'year', 'temperature_anomaly'),
     'co2':         ('merged_co2_temp.csv', 'year', 'temperature_anomaly'),  # rename cols if different
     'gis':         ('gistemp.csv',        'year', 'temperature_anomaly'),
+    'long':        ('long.csv',          'year', 'temperature_anomaly')
 }
 
 def _load(key):
@@ -23,3 +24,4 @@ def _load(key):
 load_temperature_data = lambda: _load('temperature')
 load_co2_data         = lambda: _load('co2')
 load_gis_data         = lambda: _load('gis')
+load_long_data        = lambda: _load('long')
