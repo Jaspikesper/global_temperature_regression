@@ -20,6 +20,7 @@ def long_term_inference(
         xlabel: str = "Year",
         ylabel: str = "Value",
         scatter_size: int = 50,
+        interactive: bool = True,
 ) -> tuple[plt.Figure, plt.Axes]:
     """
     Plot historical inference for a *fitted_model* over [start_year, end_year].
@@ -32,6 +33,8 @@ def long_term_inference(
         Observations used in the original fit; plotted here for reference.
     start_year, end_year : int
         Inclusive time window.
+    interactive : bool
+        If True, enable hover interactivity; otherwise, disable it.
     """
     # --- Sanity checks -----------------------------------------------------
     start_year, end_year = int(start_year), int(end_year)
@@ -55,48 +58,50 @@ def long_term_inference(
     ax.legend()
 
     # ── Hover interactivity ------------------------------------------------
-    halo, = ax.plot(
-        [], [], "o",
-        ms=np.sqrt(scatter_size) * 2,
-        mfc="none", mec="yellow", mew=2, zorder=5,
-    )
-    ann = ax.annotate(
-        "",
-        xy=(0, 0),
-        xytext=(10, 10),
-        textcoords="offset points",
-        bbox=dict(boxstyle="round", fc="w"),
-        arrowprops=dict(arrowstyle="->"),
-        zorder=6,
-    )
-    ann.set_visible(False)
+    if interactive:
+        halo, = ax.plot(
+            [], [], "o",
+            ms=np.sqrt(scatter_size) * 2,
+            mfc="none", mec="yellow", mew=2, zorder=5,
+        )
+        ann = ax.annotate(
+            "",
+            xy=(0, 0),
+            xytext=(10, 10),
+            textcoords="offset points",
+            bbox=dict(boxstyle="round", fc="w"),
+            arrowprops=dict(arrowstyle="->"),
+            zorder=6,
+        )
+        ann.set_visible(False)
 
-    def _on_move(event):
-        if event.inaxes is not ax or event.xdata is None:
-            ann.set_visible(False)
-            halo.set_data([], [])
+        def _on_move(event):
+            if event.inaxes is not ax or event.xdata is None:
+                ann.set_visible(False)
+                halo.set_data([], [])
+                fig.canvas.draw_idle()
+                return
+
+            year = int(round(event.xdata))
+            year = np.clip(year, start_year, end_year)
+            pred_val = float(fitted_model(year))
+
+            mask = xobs == year
+            if mask.any():
+                obs_val = float(yobs[mask][0])
+                ann_text = f"Year : {year}\nObs  : {obs_val:.2f}\nPred: {pred_val:.2f}"
+                halo_y = obs_val
+            else:
+                ann_text = f"Year : {year}\nPred: {pred_val:.2f}"
+                halo_y = pred_val
+
+            ann.xy = (year, halo_y)
+            ann.set_text(ann_text)
+            halo.set_data([year], [halo_y])
+            ann.set_visible(True)
             fig.canvas.draw_idle()
-            return
 
-        year = int(round(event.xdata))
-        year = np.clip(year, start_year, end_year)
-        pred_val = float(fitted_model(year))
+        fig.canvas.mpl_connect("motion_notify_event", _on_move)
 
-        mask = xobs == year
-        if mask.any():
-            obs_val = float(yobs[mask][0])
-            ann_text = f"Year : {year}\nObs  : {obs_val:.2f}\nPred: {pred_val:.2f}"
-            halo_y = obs_val
-        else:
-            ann_text = f"Year : {year}\nPred: {pred_val:.2f}"
-            halo_y = pred_val
-
-        ann.xy = (year, halo_y)
-        ann.set_text(ann_text)
-        halo.set_data([year], [halo_y])
-        ann.set_visible(True)
-        fig.canvas.draw_idle()
-
-    fig.canvas.mpl_connect("motion_notify_event", _on_move)
     plt.tight_layout()
     return fig, ax
