@@ -23,8 +23,9 @@ from functools import partial
 from scipy.optimize import curve_fit
 from statsmodels.nonparametric.smoothers_lowess import lowess
 import data_loader
+
 import matplotlib
-matplotlib.use("TkAgg")                       # interactive backend
+matplotlib.use("TkAgg")                  # interactive backend
 import matplotlib.pyplot as plt
 plt.rcParams["backend"] = "TkAgg"
 
@@ -45,19 +46,21 @@ def poly_fit(degree: int):
 
 
 def exp_fit(x: np.ndarray, y: np.ndarray):
-    def model(x_vals: np.ndarray, c, r, b):
+    def _model(x_vals: np.ndarray, c, r, b):
         return c * np.exp(r * x_vals) + b
 
     try:
-        # Use safer initial guess — avoid y[0] if it’s zero or negative
         initial_c = max(np.mean(y), 1e-3)
-        params, _ = curve_fit(model, x, y, p0=(initial_c, 1e-3, 0), maxfev=5000)
-        return lambda x_new: model(x_new, *params)
-    except Exception as e:
-        print(f"[exp_fit] Fit failed: {e}")
-        mean_y = np.mean(y)
-        return lambda x_new: np.full_like(x_new, fill_value=mean_y, dtype=float)
-
+        params, _ = curve_fit(
+            _model, x, y,
+            p0=(initial_c, 1e-3, 0),
+            maxfev=5000,
+        )
+        return lambda x_new: _model(x_new, *params)
+    except Exception as exc:
+        print(f"[exp_fit] Fit failed: {exc}")
+        mean_y = float(np.mean(y))
+        return lambda x_new: np.full_like(x_new, mean_y, dtype=float)
 
 
 def loess_fit(x: np.ndarray, y: np.ndarray, frac: float = 0.3):
@@ -94,13 +97,16 @@ def plot_regression(
         ax.plot(fut_x, model(fut_x), "--", label="Future", zorder=3)
         ax.axvline(last_x, linestyle=":", linewidth=1)
 
-    # Limits *after* plotting
-    x0, x1 = ax.get_xlim()
-    y0, y1 = ax.get_ylim()
+    ax.scatter(x, y, s=scatter_size, label="Data", zorder=4)
+    ax.set(title=title, xlabel=xlabel, ylabel=ylabel)
+    ax.legend()
 
+    # Insert background last (so it stays in back) and adjust extent
     if show_background:
         try:
             bg_img = mpimg.imread("static/example2.png")
+            x0, x1 = ax.get_xlim()
+            y0, y1 = ax.get_ylim()
             ax.imshow(
                 bg_img,
                 aspect="auto",
@@ -108,13 +114,9 @@ def plot_regression(
                 zorder=0,
             )
         except Exception as exc:
-            print(f"Warning: could not load sun image: {exc}")
+            print(f"[plot_regression] Warning: could not load background: {exc}")
 
-    ax.scatter(x, y, s=scatter_size, label="Data", zorder=2)
-    ax.set(title=title, xlabel=xlabel, ylabel=ylabel)
-    ax.legend()
-
-    # Hover annotation + halo
+    # Hover annotation + halo ------------------------------------------------
     halo, = ax.plot(
         [],
         [],
@@ -123,7 +125,7 @@ def plot_regression(
         mfc="none",
         mec="yellow",
         mew=2,
-        zorder=4,
+        zorder=5,
     )
     ann = ax.annotate(
         "",
@@ -132,11 +134,11 @@ def plot_regression(
         textcoords="offset points",
         bbox=dict(boxstyle="round", fc="w"),
         arrowprops=dict(arrowstyle="->"),
-        zorder=5,
+        zorder=6,
     )
     ann.set_visible(False)
 
-    def on_move(event):
+    def _on_move(event):
         if event.inaxes is not ax or event.xdata is None:
             ann.set_visible(False)
             halo.set_data([], [])
@@ -144,7 +146,7 @@ def plot_regression(
             return
 
         year = int(round(event.xdata))
-        year = max(min(year, future_end or last_x), int(x.min()))
+        year = np.clip(year, int(x.min()), future_end or last_x)
         idx = np.where(x == year)[0]
 
         if idx.size:
@@ -163,7 +165,7 @@ def plot_regression(
         ann.set_visible(True)
         fig.canvas.draw_idle()
 
-    fig.canvas.mpl_connect("motion_notify_event", on_move)
+    fig.canvas.mpl_connect("motion_notify_event", _on_move)
     plt.show()
 
 
@@ -200,14 +202,15 @@ class RegressionApp(tk.Tk):
         self._last_model = None
         self._last_x = None
         self._last_y = None
+        self._last_show_bg = False
 
+        self._selected_loader = next(iter(self.datasets.values()))
         self._build_ui()
 
     # UI ------------------------------------------------
     def _build_ui(self):
         ds_frame = ttk.LabelFrame(self, text="Dataset")
         ds_frame.pack(fill="x", padx=10, pady=5)
-        self._selected_loader = next(iter(self.datasets.values()))  # default loader
         for name, loader in self.datasets.items():
             ttk.Button(
                 ds_frame,
@@ -229,15 +232,11 @@ class RegressionApp(tk.Tk):
 
         ttk.Label(ctrl, text="Future End:").grid(row=1, column=0, sticky="w")
         self.future_var = tk.IntVar(value=2050)
-        ttk.Entry(
-            ctrl, textvariable=self.future_var, width=10
-        ).grid(row=1, column=1, padx=5, pady=2)
+        ttk.Entry(ctrl, textvariable=self.future_var, width=10).grid(row=1, column=1, padx=5, pady=2)
 
         ttk.Label(ctrl, text="Scatter Size:").grid(row=2, column=0, sticky="w")
         self.scatter_var = tk.IntVar(value=50)
-        ttk.Entry(
-            ctrl, textvariable=self.scatter_var, width=10
-        ).grid(row=2, column=1, padx=5, pady=2)
+        ttk.Entry(ctrl, textvariable=self.scatter_var, width=10).grid(row=2, column=1, padx=5, pady=2)
 
         ttk.Label(ctrl, text="Show Sun Background:").grid(row=3, column=0, sticky="w")
         self.bg_var = tk.BooleanVar(value=True)
@@ -248,14 +247,14 @@ class RegressionApp(tk.Tk):
         ttk.Button(btn_frame, text="Done", command=self._on_done).pack(side="left", padx=5)
         ttk.Button(btn_frame, text="Quit", command=self.destroy).pack(side="left", padx=5)
 
+    # Event handlers -----------------------------------
     def _on_dataset_select(self, loader):
         self._selected_loader = loader
 
     def _on_done(self):
         self._on_plot(self._selected_loader)
-        self.after(100, self.destroy)  # Delay destruction slightly to avoid conflict with plot window
+        self.after(100, self.destroy)      # small delay avoids clashes
 
-    # Callback -----------------------------------------
     def _on_plot(self, loader):
         try:
             x, y = loader()
@@ -264,35 +263,35 @@ class RegressionApp(tk.Tk):
             return
 
         fit_func = self.methods[self.method_var.get()]
-        model = fit_func(x, y)            # ← concrete callable for later
+        model = fit_func(x, y)
         self._last_model = model
         self._last_x = x
         self._last_y = y
+        self._last_show_bg = bool(self.bg_var.get())   # NEW – remember setting
 
         plot_regression(
-            x,
-            y,
+            x, y,
             fit_func,
             title=f"{self.method_var.get()} Fit",
             xlabel="Year",
             ylabel="Value",
             scatter_size=self.scatter_var.get(),
             future_end=self.future_var.get(),
-            show_background=self.bg_var.get(),
+            show_background=self._last_show_bg,
         )
 
-    # Public accessor ----------------------------------
+    # Public accessor -------------------------------
     def get_last_fit(self):
-        """Return (model_callable, x_obs, y_obs) or (None, None, None)."""
-        return self._last_model, self._last_x, self._last_y
+        """Return (model, x_obs, y_obs, show_background_flag)."""
+        return self._last_model, self._last_x, self._last_y, self._last_show_bg
 
 
 # ───────────────────────── main ────────────────────────
 def run():
     """Launch GUI, then run historical inference after it closes."""
     app = RegressionApp()
-    app.mainloop()                       # blocks until window closed
-    model, x_obs, y_obs = app.get_last_fit()
+    app.mainloop()                     # blocks until window closed
+    model, x_obs, y_obs, show_bg = app.get_last_fit()
 
     if model is None:
         print("No plot was generated – nothing to infer. Exiting.")
@@ -300,20 +299,29 @@ def run():
 
     # Historical reconstruction (1000–1950 by default)
     print("Running historical inference …")
-    x_long, y_long = data_loader.load_long_data()  # call the loader
+    x_long, y_long = data_loader.load_long_data()
     fig, ax = long_term_inference(
         model,
         x_long,
         y_long,
         start_year=1000,
         end_year=1950,
-        title="Historical reconstruction (1000‑2024)",
+        title="Historical reconstruction (1000‑1950)",
+        show_background=show_bg,               # NEW – forward flag
     )
 
-    ax.scatter(x_long, y_long, s=25, c="blue",  # plot long observations
-               label="Long-Term Temperature Observed", zorder=3)
-    ax.scatter(x_obs, y_obs, s=25, c="blue",  # plot long observations
-               label="Long-Term Temperature Observed", zorder=3)
+    # Overlay the original long‑term observations for context
+    ax.scatter(
+        x_long, y_long,
+        s=25, c="blue", label="Long‑Term Temperature (Obs.)", zorder=4
+    )
+    ax.scatter(
+        x_obs, y_obs,
+        s=25, c="blue", alpha=0.5, zorder=4
+    )
+    ax.legend()
     plt.show()
+
+
 if __name__ == "__main__":
     run()

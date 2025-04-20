@@ -1,8 +1,13 @@
+"""
+Module containing long_term_inference – now able to add the sun background.
+"""
+
 import numpy as np
-import data_loader
 import matplotlib
+matplotlib.use("TkAgg")                # keep everything interactive
 import matplotlib.pyplot as plt
 plt.rcParams["backend"] = "TkAgg"
+import matplotlib.image as mpimg
 
 
 def long_term_inference(
@@ -16,6 +21,7 @@ def long_term_inference(
         xlabel: str = "Year",
         ylabel: str = "Value",
         scatter_size: int = 50,
+        show_background: bool = False,          # NEW
 ) -> tuple[plt.Figure, plt.Axes]:
     """
     Plot historical inference for a *fitted_model* over [start_year, end_year].
@@ -23,71 +29,86 @@ def long_term_inference(
     Parameters
     ----------
     fitted_model : callable
-        Function f(years) -> predicted values, typically returned by one of
-        your fit helpers (poly_fit, exp_fit, loess_fit, …).
+        Function f(years) -> predicted values.
     xobs, yobs : np.ndarray
-        Original observations already used to fit the model.
-        Used here only for plotting/hover feedback.
+        Observed data used in the original fit; plotted here for reference.
     start_year, end_year : int
-        Inclusive range for the time axis (can extend beyond xobs).
-    title : str | None
-        Plot title; defaults to “Historical inference”.
-    xlabel, ylabel : str
-        Axis labels.
-    scatter_size : int
-        Size of observation markers.
-
-    Returns
-    -------
-    fig, ax : matplotlib Figure and Axes (so you can tweak further).
+        Inclusive time window.
+    show_background : bool
+        If True, paint the sun image behind the graph.
     """
-    # --- Sanity checks / coercions -----------------------------------------
+    # --- Sanity checks -----------------------------------------------------
     start_year, end_year = int(start_year), int(end_year)
     if start_year > end_year:
         start_year, end_year = end_year, start_year
 
     years_all = np.arange(start_year, end_year + 1)
-    preds     = fitted_model(years_all)
+    preds = fitted_model(years_all)
 
-    # --- Prepare canvas -----------------------------------------------------
+    # --- Prepare canvas ----------------------------------------------------
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.set_facecolor("#ffffff")
+    ax.plot(years_all, preds, label="Model prediction", zorder=3)
 
-    # Main curve & optional shading of extrapolated zone
-    ax.plot(years_all, preds, label="Model prediction", zorder=2)
-
-    from data_loader import _load
-
-
-
-    # Indicate the observation envelope
+    # Highlight extrapolated portions
     x_min_obs, x_max_obs = int(xobs.min()), int(xobs.max())
     if start_year < x_min_obs:
         ax.axvspan(start_year, x_min_obs, color="#b3cde3", alpha=.08,
-                   label="extrapolated zone (pre‑obs)")
+                   label="extrapolated (pre‑obs)")
     if end_year > x_max_obs:
         ax.axvspan(x_max_obs, end_year, color="#fbb4ae", alpha=.08,
-                   label="extrapolated zone (post‑obs)")
+                   label="extrapolated (post‑obs)")
 
-    # Scatter observed points (only those falling in the [start, end] range)
+    # Scatter observed points that fall in range
     in_range = (xobs >= start_year) & (xobs <= end_year)
+    ax.scatter(
+        xobs[in_range],
+        yobs[in_range],
+        s=scatter_size,
+        color="black",
+        label="Observations",
+        zorder=4,
+    )
 
-    # Labels / legend
-    ax.set(xlabel=xlabel, ylabel=ylabel,
-           title=title or "Historical inference")
+    # Insert background LAST so it stays behind everything
+    if show_background:
+        try:
+            bg = mpimg.imread("static/example2.png")
+            x0, x1 = ax.get_xlim()
+            y0, y1 = ax.get_ylim()
+            ax.imshow(
+                bg,
+                aspect="auto",
+                extent=(x0, 1.02*x1, y0, 3 * y1),
+                zorder=0,
+            )
+        except Exception as exc:
+            print(f"[long_term_inference] Warning: could not load background: {exc}")
+
+    # Labels / legend -------------------------------------------------------
+    ax.set(
+        xlabel=xlabel,
+        ylabel=ylabel,
+        title=title or "Historical inference",
+    )
     ax.legend()
 
-    # --- Hover / halo interactivity ----------------------------------------
-    halo, = ax.plot([], [], "o", ms=np.sqrt(scatter_size) * 2,
-                    mfc="none", mec="yellow", mew=2, zorder=4)
-    ann = ax.annotate("", xy=(0, 0), xytext=(10, 10),
-                      textcoords="offset points",
-                      bbox=dict(boxstyle="round", fc="w"),
-                      arrowprops=dict(arrowstyle="->"), zorder=5)
+    # ── Hover interactivity ------------------------------------------------
+    halo, = ax.plot(
+        [], [], "o",
+        ms=np.sqrt(scatter_size) * 2,
+        mfc="none", mec="yellow", mew=2, zorder=5,
+    )
+    ann = ax.annotate(
+        "",
+        xy=(0, 0),
+        xytext=(10, 10),
+        textcoords="offset points",
+        bbox=dict(boxstyle="round", fc="w"),
+        arrowprops=dict(arrowstyle="->"),
+        zorder=6,
+    )
     ann.set_visible(False)
-
-    # Pre‑compute dict for O(1) observed lookup
-    obs_lookup = {int(x): float(y) for x, y in zip(xobs, yobs)}
 
     def _on_move(event):
         if event.inaxes is not ax or event.xdata is None:
@@ -97,20 +118,23 @@ def long_term_inference(
             return
 
         year = int(round(event.xdata))
-        year = max(min(year, end_year), start_year)
+        year = np.clip(year, start_year, end_year)
+        pred_val = float(fitted_model(year))
 
-        # Observed?
-        if year in obs_lookup:
-            obs_val = obs_lookup[year]
-            disp_obs = f"{obs_val:.2f}"
-            y_val = obs_val
+        # If we actually have an observation for that year, use it;
+        # otherwise just display the prediction.
+        mask = xobs == year
+        if mask.any():
+            obs_val = float(yobs[mask][0])
+            ann_text = f"Year : {year}\nObs  : {obs_val:.2f}\nPred: {pred_val:.2f}"
+            halo_y = obs_val
         else:
-            disp_obs = "–"
-            y_val = fitted_model(year)
+            ann_text = f"Year : {year}\nPred: {pred_val:.2f}"
+            halo_y = pred_val
 
-        ann.xy = (year, y_val)
-        ann.set_text(f"Year : {year}\nObs  : {disp_obs}\nPred: {fitted_model(year):.2f}")
-        halo.set_data([year], [y_val])
+        ann.xy = (year, halo_y)
+        ann.set_text(ann_text)
+        halo.set_data([year], [halo_y])
         ann.set_visible(True)
         fig.canvas.draw_idle()
 
