@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Interactive Regression Explorer – sun‑fixed edition
+Interactive Regression Explorer – sun‑fixed edition
 (extended to run a post‑GUI historical inference)
 
 Dependencies
@@ -14,6 +14,7 @@ Dependencies
           load_temperature_data() -> (x, y)
           load_co2_data()         -> (x, y)
           load_gis_data()         -> (x, y)
+          load_long_data()        -> (x, y)
     • infer.py      – must expose long_term_inference(...)
 """
 
@@ -101,7 +102,6 @@ def plot_regression(
     ax.set(title=title, xlabel=xlabel, ylabel=ylabel)
     ax.legend()
 
-    # Insert background last (so it stays in back) and adjust extent
     if show_background:
         try:
             bg_img = mpimg.imread("static/example2.png")
@@ -112,15 +112,14 @@ def plot_regression(
                 aspect="auto",
                 extent=(x0, x1, y0, 1.33 * y1),
                 zorder=0,
+                alpha=1,
             )
         except Exception as exc:
             print(f"[plot_regression] Warning: could not load background: {exc}")
 
     # Hover annotation + halo ------------------------------------------------
     halo, = ax.plot(
-        [],
-        [],
-        "o",
+        [], [], "o",
         ms=np.sqrt(scatter_size) * 2,
         mfc="none",
         mec="yellow",
@@ -159,7 +158,7 @@ def plot_regression(
 
         ann.xy = (year, y_val)
         ann.set_text(
-            f"Year : {year}\nObs  : {disp_obs}\nPred: {model(year):.2f}"
+            f"Year : {year}\nObs  : {disp_obs}\nPred: {model(year):.2f}"
         )
         halo.set_data([year], [y_val])
         ann.set_visible(True)
@@ -267,7 +266,7 @@ class RegressionApp(tk.Tk):
         self._last_model = model
         self._last_x = x
         self._last_y = y
-        self._last_show_bg = bool(self.bg_var.get())   # NEW – remember setting
+        self._last_show_bg = bool(self.bg_var.get())
 
         plot_regression(
             x, y,
@@ -290,14 +289,14 @@ class RegressionApp(tk.Tk):
 def run():
     """Launch GUI, then run historical inference after it closes."""
     app = RegressionApp()
-    app.mainloop()                     # blocks until window closed
-    model, x_obs, y_obs, show_bg = app.get_last_fit()
+    app.mainloop()  # blocks until window closed
 
+    model, x_obs, y_obs, show_bg = app.get_last_fit()
     if model is None:
         print("No plot was generated – nothing to infer. Exiting.")
         return
 
-    # Historical reconstruction (1000–1950 by default)
+    # Historical reconstruction (1000‑1950 by default)
     print("Running historical inference …")
     x_long, y_long = data_loader.load_long_data()
     fig, ax = long_term_inference(
@@ -307,8 +306,28 @@ def run():
         start_year=1000,
         end_year=1950,
         title="Historical reconstruction (1000‑1950)",
-        show_background=show_bg,               # NEW – forward flag
     )
+
+    # Sun background for long-term plot
+    if show_bg:
+        try:
+            bg = mpimg.imread("static/example2.png")
+            x0, x1 = ax.get_xlim()
+            # expand vertical bounds to include your data
+            y0_existing, y1_existing = ax.get_ylim()
+            y0 = min(y0_existing, float(y_long.min()), float(y_obs.min()))
+            y1 = max(y1_existing, float(y_long.max()), float(y_obs.max()))
+            ax.set_ylim(y0, y1)
+
+            ax.imshow(
+                bg,
+                aspect="auto",
+                extent=(x0, x1, y0, y1),
+                zorder=0,
+                alpha=1,
+            )
+        except Exception as exc:
+            print(f"[run] Warning: could not load background: {exc}")
 
     # Overlay the original long‑term observations for context
     ax.scatter(
