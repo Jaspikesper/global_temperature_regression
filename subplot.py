@@ -37,8 +37,19 @@ from tkinter import ttk, messagebox
 # Post‑GUI inference helper
 from infer import long_term_inference
 
+# ── Globals to store selected dataset info ────────────────────────────────
+dataset_name: str = ""
+xmax: float = 0.0
+ymax: float = 0.0
 
-# ───────────────────── Fit helpers ─────────────────────
+# Mapping of UI names to identifier keys
+DATASET_KEYS = {
+    "Temperature": "temperature",
+    "CO2 & Temp":  "co2",
+    "GIS":         "gis",
+}
+
+# ───────────────────── Fit helpers ────────────────────────────────────────
 def poly_fit(degree: int):
     def fit(x: np.ndarray, y: np.ndarray):
         coeffs = np.polyfit(x, y, degree)
@@ -70,7 +81,7 @@ def loess_fit(x: np.ndarray, y: np.ndarray, frac: float = 0.3):
     return lambda x_new: np.interp(x_new, xs, ys)
 
 
-# ────────────── Plot‑creation helper ──────────────
+# ────────────── Plot‑creation helper ─────────────────────────────────────
 def plot_regression(
         x: np.ndarray,
         y: np.ndarray,
@@ -110,7 +121,7 @@ def plot_regression(
             ax.imshow(
                 bg_img,
                 aspect="auto",
-                extent=(x0, x1, y0, 1.33 * y1),
+                extent=(x0, x1, y0, y1),
                 zorder=0,
                 alpha=1,
             )
@@ -168,7 +179,7 @@ def plot_regression(
     plt.show()
 
 
-# ──────────────────── GUI wrapper ────────────────────
+# ──────────────────── GUI wrapper ────────────────────────────────────────
 class RegressionApp(tk.Tk):
     """
     Tk GUI that lets the user pick a dataset & method, shows a regression
@@ -180,21 +191,21 @@ class RegressionApp(tk.Tk):
         super().__init__()
         self.title("Regression Explorer")
 
-        # Datasets
+        # Datasets (display name → loader)
         self.datasets = {
             "Temperature": data_loader.load_temperature_data,
-            "CO2 & Temp": data_loader.load_co2_data,
-            "GIS": data_loader.load_gis_data,
+            "CO2 & Temp":  data_loader.load_co2_data,
+            "GIS":          data_loader.load_gis_data,
         }
 
         # Methods
         self.methods = {
-            "Linear": poly_fit(1),
-            "Quadratic": poly_fit(2),
-            "Cubic": poly_fit(3),
-            "Quartic": poly_fit(4),
+            "Linear":      poly_fit(1),
+            "Quadratic":   poly_fit(2),
+            "Cubic":       poly_fit(3),
+            "Quartic":     poly_fit(4),
             "Exponential": exp_fit,
-            "LOESS": loess_fit,
+            "LOESS":       loess_fit,
         }
 
         # Will be filled on first plot
@@ -203,18 +214,21 @@ class RegressionApp(tk.Tk):
         self._last_y = None
         self._last_show_bg = False
 
-        self._selected_loader = next(iter(self.datasets.values()))
+        # Track which dataset is selected
+        self._selected_name = next(iter(self.datasets))
+        self._selected_loader = self.datasets[self._selected_name]
+
         self._build_ui()
 
     # UI ------------------------------------------------
     def _build_ui(self):
         ds_frame = ttk.LabelFrame(self, text="Dataset")
         ds_frame.pack(fill="x", padx=10, pady=5)
-        for name, loader in self.datasets.items():
+        for name in self.datasets:
             ttk.Button(
                 ds_frame,
                 text=name,
-                command=partial(self._on_dataset_select, loader),
+                command=partial(self._on_dataset_select, name),
             ).pack(side="left", padx=5)
 
         ctrl = ttk.Frame(self)
@@ -247,19 +261,29 @@ class RegressionApp(tk.Tk):
         ttk.Button(btn_frame, text="Quit", command=self.destroy).pack(side="left", padx=5)
 
     # Event handlers -----------------------------------
-    def _on_dataset_select(self, loader):
-        self._selected_loader = loader
+    def _on_dataset_select(self, name):
+        """Remember which dataset the user chose."""
+        self._selected_name = name
+        self._selected_loader = self.datasets[name]
 
     def _on_done(self):
-        self._on_plot(self._selected_loader)
-        self.after(100, self.destroy)      # small delay avoids clashes
+        self._on_plot()
+        self.after(100, self.destroy)  # small delay avoids clashes
 
-    def _on_plot(self, loader):
+    def _on_plot(self):
+        loader = self._selected_loader
+        name = self._selected_name
         try:
             x, y = loader()
         except Exception as exc:
             messagebox.showerror("Load error", str(exc))
             return
+
+        # Store globals for selected dataset
+        global dataset_name, xmax, ymax
+        dataset_name = DATASET_KEYS[name]
+        xmax = float(np.max(x))
+        ymax = float(np.max(y))
 
         fit_func = self.methods[self.method_var.get()]
         model = fit_func(x, y)
@@ -285,7 +309,7 @@ class RegressionApp(tk.Tk):
         return self._last_model, self._last_x, self._last_y, self._last_show_bg
 
 
-# ───────────────────────── main ────────────────────────
+# ───────────────────────── main ──────────────────────────────────────────
 def run():
     """Launch GUI, then run historical inference after it closes."""
     app = RegressionApp()
@@ -308,21 +332,19 @@ def run():
         title="Historical reconstruction (1000‑1950)",
     )
 
-    # Sun background for long-term plot
+    # Sun background for long‑term plot, using selected-dataset bounds
     if show_bg:
         try:
             bg = mpimg.imread("static/example2.png")
-            x0, x1 = ax.get_xlim()
-            # expand vertical bounds to include your data
-            y0_existing, y1_existing = ax.get_ylim()
+            x0, _ = ax.get_xlim()
+            y0_existing, _ = ax.get_ylim()
             y0 = min(y0_existing, float(y_long.min()), float(y_obs.min()))
-            y1 = max(y1_existing, float(y_long.max()), float(y_obs.max()))
-            ax.set_ylim(y0, y1)
-
+            # Use global xmax, ymax for upper bounds
+            ax.set_ylim(y0, ymax)
             ax.imshow(
                 bg,
                 aspect="auto",
-                extent=(x0, x1, y0, y1),
+                extent=(x0, xmax, y0, ymax),
                 zorder=0,
                 alpha=1,
             )
