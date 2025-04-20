@@ -48,17 +48,10 @@ def general_curve_fit(model_func, p0=None, maxfev=2000):
     Returns a function fit(x_arr, y_arr).
     """
     def fit(x_arr, y_arr):
-        # build actual initial guess
         p0_actual = None
         if p0 is not None:
             if isinstance(p0, (list, tuple)):
-                p0_list = []
-                for val in p0:
-                    if val is None:
-                        p0_list.append(y_arr[0])
-                    else:
-                        p0_list.append(val)
-                p0_actual = tuple(p0_list)
+                p0_actual = tuple(y_arr[0] if val is None else val for val in p0)
             else:
                 p0_actual = p0
         params, _ = curve_fit(model_func, x_arr, y_arr, p0=p0_actual, maxfev=maxfev)
@@ -75,7 +68,8 @@ def loess_fit(x_arr, y_arr, frac=0.3):
 # ---------- Interactive grid helper ----------
 
 def interactive_regression_grid(datasets, nrows=2, ncols=2,
-                                scatter_size=50, future_end=2050):
+                                scatter_size=50, future_end=2050,
+                                recent_data=None):
     """
     Display a grid of interactive regression plots.
 
@@ -83,6 +77,9 @@ def interactive_regression_grid(datasets, nrows=2, ncols=2,
       - Year (discrete integer)
       - Observed (or '-')
       - Predicted (curve value)
+
+    If recent_data is provided as (x_recent, y_recent), it's overplotted
+    on panels where the title contains 'Extrapolation'.
     """
     fig, axes = plt.subplots(nrows, ncols, figsize=(12, 8))
     axes = axes.flatten()
@@ -93,7 +90,13 @@ def interactive_regression_grid(datasets, nrows=2, ncols=2,
         y_pred = model(x_arr)
         last_x = int(np.max(x_arr))
 
+        # Original dataset
         ax.scatter(x_arr, y_arr, s=scatter_size, label='Data', zorder=2)
+        # Scatter recent data on extrapolation panels
+        if recent_data and 'Extrapolation' in title:
+            x_recent, y_recent = recent_data
+            ax.scatter(x_recent, y_recent, s=scatter_size, label='Recent Data', zorder=2)
+
         ax.plot(x_arr, y_pred, label='Fit', zorder=3)
         if last_x < future_end:
             fx = np.arange(last_x, int(future_end) + 1)
@@ -108,7 +111,7 @@ def interactive_regression_grid(datasets, nrows=2, ncols=2,
         ann = ax.annotate('', xy=(0,0), xytext=(10,10), textcoords='offset points',
                           bbox=dict(boxstyle='round', fc='w'), arrowprops=dict(arrowstyle='->'))
         ann.set_visible(False)
-        halo, = ax.plot([], [], 'o', ms=np.sqrt(scatter_size), mec='yellow',
+        halo, = ax.plot([], [], 'o', ms=np.sqrt(scatter_size), mec='orange',
                         mfc='none', mew=2, zorder=4)
 
         annotations.append(ann)
@@ -123,31 +126,35 @@ def interactive_regression_grid(datasets, nrows=2, ncols=2,
             fig.canvas.draw_idle()
             return
         for (ax, x_arr, y_arr, model, last_x), ann, halo in zip(plot_data, annotations, halos):
-            if event.inaxes == ax:
-                year = int(round(event.xdata))
-                year = max(min(year, int(future_end)), int(np.min(x_arr)))
-                if year > last_x:
-                    obs_str = '-'
-                    y_val = model(year)
-                else:
-                    idx = np.where(x_arr == year)[0]
-                    if idx.size:
-                        obs_str = f"{y_arr[idx[0]]:.2f}"
-                        y_val = y_arr[idx[0]]
-                    else:
-                        obs_str = '-'
-                        y_val = model(year)
-                pred = model(year)
+            if event.inaxes != ax:
+                continue
+            year_hover = event.xdata
+            # Determine mode: past vs future
+            if year_hover > last_x:
+                # Future: stick to prediction curve
+                year = int(round(year_hover))
+                y_val = model(year)
+                obs_str = '-'
+                pred_str = f'{y_val:.2f}'
                 ann.xy = (year, y_val)
-                ann.set_text(f"Year: {year}\nObserved: {obs_str}\nPredicted: {pred:.2f}")
+                ann.set_text(f"Year: {year}\nPredicted: {pred_str}")
                 halo.set_data([year], [y_val])
-                ann.set_visible(True)
-                fig.canvas.draw_idle()
-                return
-        fig.canvas.draw_idle()
+            else:
+                # Past: stick to nearest observed point
+                idx = np.argmin(np.abs(x_arr - year_hover))
+                year = int(x_arr[idx])
+                y_val = y_arr[idx]
+                pred_val = model(year)
+                obs_str = f'{y_val:.2f}'
+                pred_str = f'{pred_val:.2f}'
+                ann.xy = (year, y_val)
+                ann.set_text(f"Year: {year}\nObserved: {obs_str}\nPredicted: {pred_str}")
+                halo.set_data([year], [y_val])
+            ann.set_visible(True)
+            fig.canvas.draw_idle()
+            return
 
     fig.canvas.mpl_connect('motion_notify_event', on_move)
-    plt.tight_layout()
     plt.show()
     return fig, axes
 
@@ -157,26 +164,29 @@ if __name__ == '__main__':
     x_long, y_long = load_long_data()
 
     # Create fit functions
-    linear_fit_func = poly_fit(1)
-    exp_fit_func    = general_curve_fit(exponential, p0=(None, 0.01, 0))
+    quadratic_fit_func = poly_fit(2)
+    exp_fit_func = general_curve_fit(exponential, p0=(0.10, 0.10, 0.10))
 
     # Fit models on temperature data
-    linear_model = linear_fit_func(x_temp, y_temp)
-    exp_model    = exp_fit_func(x_temp, y_temp)
+    quadratic_model = quadratic_fit_func(x_temp, y_temp)
+    exp_model = exp_fit_func(x_temp, y_temp)
 
     # Wrappers to reuse fitted parameters on any dataset
-    def reuse_linear(x_arr, y_arr):
-        return linear_model
+    def reuse_quadratic(x_arr, y_arr):
+        return quadratic_model
+
     def reuse_exp(x_arr, y_arr):
         return exp_model
 
     # Prepare the four interactive plots
     datasets = [
-        (x_temp, y_temp, linear_fit_func,          'Linear Fit (Temp)',             'Year', 'Value'),
-        (x_temp, y_temp, exp_fit_func,             'Exponential Fit (Temp)',        'Year', 'Value'),
-        (x_long, y_long, reuse_linear,             'Linear Extrapolation (Long)',   'Year', 'Value'),
-        (x_long, y_long, reuse_exp,                'Exponential Extrapolation (Long)','Year', 'Value'),
+        (x_temp, y_temp, quadratic_fit_func, 'Quadratic Fit (good recently / bad long-term fit)', 'Year', 'Value'),
+        (x_temp, y_temp, exp_fit_func, 'Exponential Fit (good recently / good long-term fit)', 'Year', 'Value'),
+        (x_long, y_long, reuse_quadratic, '', 'Year', 'Value'),
+        (x_long, y_long, reuse_exp, '', 'Year', 'Value'),
     ]
 
-    # Display them in a 2×2 interactive grid
-    interactive_regression_grid(datasets, nrows=2, ncols=2, scatter_size=50, future_end=2050)
+    # Display them in a 2×2 interactive grid with recent temperature data on bottom plots
+    interactive_regression_grid(datasets, nrows=2, ncols=2,
+                                scatter_size=30, future_end=2040,
+                                recent_data=(x_temp, y_temp))
