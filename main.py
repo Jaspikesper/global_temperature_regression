@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import sys
 import numpy as np
 
@@ -17,10 +18,11 @@ def _import_matplotlib():
         sys.exit(1)
 
 plt, mpimg = _import_matplotlib()
+plt.rcParams['backend'] = 'TkAgg'
+
 from scipy.optimize import curve_fit
 from statsmodels.nonparametric.smoothers_lowess import lowess
-from data_loader import load_temperature_data
-x, y = load_temperature_data()
+from data_loader import load_temperature_data, load_long_data
 
 # ---------- Fit helpers ----------
 
@@ -41,11 +43,25 @@ def general_curve_fit(model_func, p0=None, maxfev=2000):
     """
     Generic wrapper for scipy.optimize.curve_fit.
     model_func must have signature model_func(x_arr, *params).
-    p0 provides initial guess for params.
+    p0 provides initial guess for params; if a tuple contains None,
+    it's replaced by the first y-value of the fit call.
     Returns a function fit(x_arr, y_arr).
     """
     def fit(x_arr, y_arr):
-        params, _ = curve_fit(model_func, x_arr, y_arr, p0=p0, maxfev=maxfev)
+        # build actual initial guess
+        p0_actual = None
+        if p0 is not None:
+            if isinstance(p0, (list, tuple)):
+                p0_list = []
+                for val in p0:
+                    if val is None:
+                        p0_list.append(y_arr[0])
+                    else:
+                        p0_list.append(val)
+                p0_actual = tuple(p0_list)
+            else:
+                p0_actual = p0
+        params, _ = curve_fit(model_func, x_arr, y_arr, p0=p0_actual, maxfev=maxfev)
         return lambda x_new: model_func(x_new, *params)
     return fit
 
@@ -135,17 +151,32 @@ def interactive_regression_grid(datasets, nrows=2, ncols=2,
     plt.show()
     return fig, axes
 
-# ---------- Method map ----------
-_method_map = {
-    'linear':     (poly_fit(1), 'Linear'),
-    'quadratic':  (poly_fit(2), 'Quadratic'),
-    'cubic':      (poly_fit(3), 'Cubic'),
-    'quartic':    (poly_fit(4), 'Quartic'),
-    'exponential':(general_curve_fit(exponential, p0=(y[0], 0.01, 0)), 'Exponential'),
-    'loess':      (loess_fit, 'LOESS'),
-}
-
 if __name__ == '__main__':
-    methods = ['linear', 'exponential', 'loess', 'cubic']
-    datasets = [(x, y, _method_map[m][0], m, 'Year', 'Value') for m in methods]
+    # Load data
+    x_temp, y_temp = load_temperature_data()
+    x_long, y_long = load_long_data()
+
+    # Create fit functions
+    linear_fit_func = poly_fit(1)
+    exp_fit_func    = general_curve_fit(exponential, p0=(None, 0.01, 0))
+
+    # Fit models on temperature data
+    linear_model = linear_fit_func(x_temp, y_temp)
+    exp_model    = exp_fit_func(x_temp, y_temp)
+
+    # Wrappers to reuse fitted parameters on any dataset
+    def reuse_linear(x_arr, y_arr):
+        return linear_model
+    def reuse_exp(x_arr, y_arr):
+        return exp_model
+
+    # Prepare the four interactive plots
+    datasets = [
+        (x_temp, y_temp, linear_fit_func,          'Linear Fit (Temp)',             'Year', 'Value'),
+        (x_temp, y_temp, exp_fit_func,             'Exponential Fit (Temp)',        'Year', 'Value'),
+        (x_long, y_long, reuse_linear,             'Linear Extrapolation (Long)',   'Year', 'Value'),
+        (x_long, y_long, reuse_exp,                'Exponential Extrapolation (Long)','Year', 'Value'),
+    ]
+
+    # Display them in a 2×2 interactive grid
     interactive_regression_grid(datasets, nrows=2, ncols=2, scatter_size=50, future_end=2050)
