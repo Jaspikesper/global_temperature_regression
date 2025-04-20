@@ -50,38 +50,27 @@ def long_term_inference(
     ax.set_facecolor("#ffffff")
     ax.plot(years_all, preds, label="Model prediction", zorder=3)
 
-    # Highlight extrapolated portions
-    x_min_obs, x_max_obs = int(xobs.min()), int(xobs.max())
-    if start_year < x_min_obs:
-        ax.axvspan(start_year, x_min_obs, color="#b3cde3", alpha=.08,
-                   label="extrapolated (pre‑obs)")
-    if end_year > x_max_obs:
-        ax.axvspan(x_max_obs, end_year, color="#fbb4ae", alpha=.08,
-                   label="extrapolated (post‑obs)")
 
     # Scatter observed points that fall in range
     in_range = (xobs >= start_year) & (xobs <= end_year)
-    ax.scatter(
-        xobs[in_range],
-        yobs[in_range],
-        s=scatter_size,
-        color="black",
-        label="Observations",
-        zorder=4,
-    )
 
     # Insert background LAST so it stays behind everything
     if show_background:
+
         try:
             bg = mpimg.imread("static/example2.png")
-            x0, x1 = ax.get_xlim()
-            y0, y1 = ax.get_ylim()
+            x0 = np.min(xobs)
+            x1 = np.max()
+            y0 = np.min(yobs)
+            y1 = np.max(yobs)
             ax.imshow(
                 bg,
                 aspect="auto",
-                extent=(x0, 1.02*x1, y0, 3 * y1),
+                extent=(x0, 1.02*x1, y0, y1),
                 zorder=0,
+                a=1
             )
+            print(x0, x1, y0, y1)
         except Exception as exc:
             print(f"[long_term_inference] Warning: could not load background: {exc}")
 
