@@ -30,7 +30,7 @@ def long_term_inference(
     fitted_model : callable
         Function f(years) -> predicted values.
     xobs, yobs : np.ndarray
-        Observations used in the original fit; plotted here for reference.
+        Observations used in the original fit
     start_year, end_year : int
         Inclusive time window.
     interactive : bool

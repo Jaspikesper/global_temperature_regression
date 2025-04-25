@@ -249,7 +249,7 @@ class RegressionApp(tk.Tk):
             fit_func,
             title=f"{self.method_var.get()} Fit",
             xlabel="Year",
-            ylabel="Value",
+            ylabel="Temperature",
             scatter_size=50,
             future_end=self.future_var.get(),
             show_background=self._last_show_bg,
