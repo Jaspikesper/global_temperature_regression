@@ -35,44 +35,36 @@ load_long_data        = lambda: _load('long')
 infer.py
 ---
 """
-Module containing long_term_inference  simplified version without background.
+infer.py
+--------
+Historical reconstruction plot with optional hover interactivity.
 """
+
+from __future__ import annotations
 
 import numpy as np
 import matplotlib
-matplotlib.use("TkAgg")                # force interactive backend
+matplotlib.use("TkAgg")               # force interactive backend
 import matplotlib.pyplot as plt
 plt.rcParams["backend"] = "TkAgg"
 
+from interactivity import attach_hover
+
 
 def long_term_inference(
-        fitted_model: callable,
-        xobs: np.ndarray,
-        yobs: np.ndarray,
-        *,
-        start_year: int = 1000,
-        end_year: int = 2025,
-        title: str | None = None,
-        xlabel: str = "Year",
-        ylabel: str = "Value",
-        scatter_size: int = 50,
-        interactive: bool = True,
+    fitted_model: callable,
+    xobs: np.ndarray,
+    yobs: np.ndarray,
+    *,
+    start_year: int = 1000,
+    end_year: int = 2025,
+    title: str | None = None,
+    xlabel: str = "Year",
+    ylabel: str = "Value",
+    scatter_size: int = 50,
+    interactive: bool = True,
 ) -> tuple[plt.Figure, plt.Axes]:
-    """
-    Plot historical inference for a *fitted_model* over [start_year, end_year].
-
-    Parameters
-    ----------
-    fitted_model : callable
-        Function f(years) -> predicted values.
-    xobs, yobs : np.ndarray
-        Observations used in the original fit
-    start_year, end_year : int
-        Inclusive time window.
-    interactive : bool
-        If True, enable hover interactivity; otherwise, disable it.
-    """
-    # --- Sanity checks -----------------------------------------------------
+    # --- Sanity checks --------------------------------------------------
     start_year, end_year = int(start_year), int(end_year)
     if start_year > end_year:
         start_year, end_year = end_year, start_year
@@ -80,12 +72,12 @@ def long_term_inference(
     years_all = np.arange(start_year, end_year + 1)
     preds = fitted_model(years_all)
 
-    # --- Prepare canvas ----------------------------------------------------
+    # --- Prepare canvas -------------------------------------------------
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.set_facecolor("#ffffff")
     ax.plot(years_all, preds, label="Model prediction", zorder=3)
 
-    # Labels / legend -------------------------------------------------------
+    # Labels / legend ----------------------------------------------------
     ax.set(
         xlabel=xlabel,
         ylabel=ylabel,
@@ -93,98 +85,157 @@ def long_term_inference(
     )
     ax.legend()
 
-    #  Hover interactivity ------------------------------------------------
+    # Hover interactivity ------------------------------------------------
     if interactive:
-        halo, = ax.plot(
-            [], [], "o",
-            ms=np.sqrt(scatter_size) * 2,
-            mfc="none", mec="yellow", mew=2, zorder=5,
+        attach_hover(
+            ax,
+            xobs,
+            yobs,
+            fitted_model,
+            scatter_size=scatter_size,
+            start=start_year,
+            end=end_year,
         )
-        ann = ax.annotate(
-            "",
-            xy=(0, 0),
-            xytext=(10, 10),
-            textcoords="offset points",
-            bbox=dict(boxstyle="round", fc="w"),
-            arrowprops=dict(arrowstyle="->"),
-            zorder=6,
-        )
-        ann.set_visible(False)
-
-        def _on_move(event):
-            if event.inaxes is not ax or event.xdata is None:
-                ann.set_visible(False)
-                halo.set_data([], [])
-                fig.canvas.draw_idle()
-                return
-
-            year = int(round(event.xdata))
-            year = np.clip(year, start_year, end_year)
-            pred_val = float(fitted_model(year))
-
-            mask = xobs == year
-            if mask.any():
-                obs_val = float(yobs[mask][0])
-                ann_text = f"Year : {year}\nObs  : {obs_val:.2f}\nPred: {pred_val:.2f}"
-                halo_y = obs_val
-            else:
-                ann_text = f"Year : {year}\nPred: {pred_val:.2f}"
-                halo_y = pred_val
-
-            ann.xy = (year, halo_y)
-            ann.set_text(ann_text)
-            halo.set_data([year], [halo_y])
-            ann.set_visible(True)
-            fig.canvas.draw_idle()
-
-        fig.canvas.mpl_connect("motion_notify_event", _on_move)
 
     plt.tight_layout()
     return fig, ax
 
 
 ---
+interactivity.py
+---
+"""
+interactivity.py
+----------------
+Reusable yellow-halo hover helper for matplotlib Axes.
+
+attach_hover(ax, x_obs, y_obs, predictor, *, scatter_size=50, start=None, end=None)
+     ax           : target Axes
+    x_obs, y_obs : 1-D NumPy arrays of observed data
+     predictor    : callable(years) -> predictions
+    scatter_size : radius basis for halo
+    start / end  : clamp range for the cursor (defaults to data extents)
+
+Returns (annotation, halo_line) so callers may further tweak style if desired.
+"""
+from __future__ import annotations
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+def attach_hover(
+    ax: plt.Axes,
+    x_obs: np.ndarray,
+    y_obs: np.ndarray,
+    predictor,
+    *,
+    scatter_size: int = 50,
+    start: int | None = None,
+    end: int | None = None,
+):
+    fig = ax.figure
+    halo, = ax.plot(
+        [], [],
+        "o",
+        ms=np.sqrt(scatter_size) * 2,
+        mfc="none",
+        mec="yellow",
+        mew=2,
+        zorder=5,
+    )
+    ann = ax.annotate(
+        "",
+        xy=(0, 0),
+        xytext=(10, 10),
+        textcoords="offset points",
+        bbox=dict(boxstyle="round", fc="w"),
+        arrowprops=dict(arrowstyle="->"),
+        zorder=6,
+    )
+    ann.set_visible(False)
+
+    xmin = int(np.min(x_obs)) if start is None else int(start)
+    xmax = int(np.max(x_obs)) if end   is None else int(end)
+
+    def _on_move(event):
+        if event.inaxes is not ax or event.xdata is None:
+            ann.set_visible(False)
+            halo.set_data([], [])
+            fig.canvas.draw_idle()
+            return
+
+        yr = int(round(event.xdata))
+        yr = max(xmin, min(xmax, yr))
+        pred = float(predictor(yr))
+
+        mask = x_obs == yr
+        if mask.any():
+            obs = float(y_obs[mask][0])
+            halo_y = obs
+            text = f"Year : {yr}\nObs  : {obs:.2f}\nPred: {pred:.2f}"
+        else:
+            halo_y = pred
+            text = f"Year : {yr}\nPred: {pred:.2f}"
+
+        ann.xy = (yr, halo_y)
+        ann.set_text(text)
+        halo.set_data([yr], [halo_y])
+        ann.set_visible(True)
+        fig.canvas.draw_idle()
+
+    fig.canvas.mpl_connect("motion_notify_event", _on_move)
+    return ann, halo
+
+
+---
 main.py
 ---
 #!/usr/bin/env python3
+"""
+main.py
+-------
+Two-by-two interactive grid comparing regression fits.
+"""
+
+from __future__ import annotations
+
 import sys
 import numpy as np
 
-# Attempt to import plotting libraries
+# --- matplotlib bootstrap ----------------------------------------------
 def _import_matplotlib():
     try:
         import matplotlib
-        matplotlib.use('TkAgg')  # Use TkAgg for interactivity
+        matplotlib.use("TkAgg")
         import matplotlib.pyplot as plt
-        import matplotlib.image as mpimg
-        return plt, mpimg
+        return plt
     except ImportError:
         sys.stderr.write(
             "Error: matplotlib is required for plotting but is not installed.\n"
-            "Please install it via 'pip install matplotlib' or your environment manager.\n"
+            "Please install it via 'pip install matplotlib'.\n"
         )
         sys.exit(1)
 
-plt, mpimg = _import_matplotlib()
-plt.rcParams['backend'] = 'TkAgg'
+
+plt = _import_matplotlib()
+plt.rcParams["backend"] = "TkAgg"
 
 from scipy.optimize import curve_fit
 from statsmodels.nonparametric.smoothers_lowess import lowess
+from interactivity import attach_hover
 from data_loader import load_temperature_data, load_long_data
 
-# ---------- Fit helpers ----------
 
+# ---------- Fit helpers -------------------------------------------------
 def poly_fit(degree):
-    """Polynomial fit of specified degree."""
     def fit(x_arr, y_arr):
         coeffs = np.polyfit(x_arr, y_arr, degree)
         return lambda x_new: np.polyval(coeffs, x_new)
     return fit
 
+
 def exp_fit(x: np.ndarray, y: np.ndarray):
-    """
-    Fit y = c * exp(r*(x - x0)) + b, with data-driven initial guess.
-    """
     x0 = x[0]
 
     def _model(x_vals, c, r, b):
@@ -207,26 +258,31 @@ def exp_fit(x: np.ndarray, y: np.ndarray):
         mean_y = float(np.mean(y))
         return lambda x_new: np.full_like(x_new, mean_y, dtype=float)
 
+
 def loess_fit(x_arr, y_arr, frac=0.3):
     loess_res = lowess(y_arr, x_arr, frac=frac, return_sorted=True)
     xs, ys = loess_res[:, 0], loess_res[:, 1]
     return lambda x_new: np.interp(x_new, xs, ys)
 
-# ---------- Interactive grid helper ----------
 
-def interactive_regression_grid(datasets, nrows=2, ncols=2,
-                                scatter_size=50, future_end=2050,
-                                recent_data=None):
+# ---------- Interactive grid helper ------------------------------------
+def interactive_regression_grid(
+    datasets,
+    nrows=2,
+    ncols=2,
+    scatter_size=50,
+    future_end=2050,
+    recent_data=None,
+):
     fig, axes = plt.subplots(nrows, ncols, figsize=(12, 8))
     axes = axes.flatten()
 
-    annotations, halos, plot_data = [], [], []
     for ax, (x_arr, y_arr, fit_func, title, xlabel, ylabel) in zip(axes, datasets):
         model = fit_func(x_arr, y_arr)
         y_pred = model(x_arr)
         last_x = int(np.max(x_arr))
 
-        ax.scatter(x_arr, y_arr, s=scatter_size, label='Data', zorder=2)
+        ax.scatter(x_arr, y_arr, s=scatter_size, label="Data", zorder=2)
         if recent_data and 'Extrapolation' in title:
             x_recent, y_recent = recent_data
             ax.scatter(x_recent, y_recent, s=scatter_size, label='Recent Data', zorder=2)
@@ -242,79 +298,48 @@ def interactive_regression_grid(datasets, nrows=2, ncols=2,
         ax.set_ylabel(ylabel)
         ax.legend()
 
-        ann = ax.annotate('', xy=(0,0), xytext=(10,10), textcoords='offset points',
-                          bbox=dict(boxstyle='round', fc='w'), arrowprops=dict(arrowstyle='->'))
-        ann.set_visible(False)
-        halo, = ax.plot([], [], 'o', ms=np.sqrt(scatter_size), mec='yellow',
-                        mfc='none', mew=2, zorder=4)
+        # Re-use consolidated hover logic
+        attach_hover(
+            ax,
+            x_arr,
+            y_arr,
+            model,
+            scatter_size=scatter_size,
+            start=int(x_arr.min()),
+            end=int(future_end),
+        )
 
-        annotations.append(ann)
-        halos.append(halo)
-        plot_data.append((ax, x_arr, y_arr, model, last_x))
-
-    def on_move(event):
-        for ann, halo in zip(annotations, halos):
-            ann.set_visible(False)
-            halo.set_data([], [])
-        if event.inaxes is None or event.xdata is None:
-            fig.canvas.draw_idle()
-            return
-        for (ax, x_arr, y_arr, model, last_x), ann, halo in zip(plot_data, annotations, halos):
-            if event.inaxes != ax:
-                continue
-            year_hover = event.xdata
-            if year_hover > last_x:
-                year = int(round(year_hover))
-                y_val = model(year)
-                obs_str = '-'
-                pred_str = f'{y_val:.2f}'
-                ann.xy = (year, y_val)
-                ann.set_text(f"Year: {year}\nPredicted: {pred_str}")
-                halo.set_data([year], [y_val])
-            else:
-                idx = np.argmin(np.abs(x_arr - year_hover))
-                year = int(x_arr[idx])
-                y_val = y_arr[idx]
-                pred_val = model(year)
-                obs_str = f'{y_val:.2f}'
-                pred_str = f'{pred_val:.2f}'
-                ann.xy = (year, y_val)
-                ann.set_text(f"Year: {year}\nObserved: {obs_str}\nPredicted: {pred_str}")
-                halo.set_data([year], [y_val])
-            ann.set_visible(True)
-            fig.canvas.draw_idle()
-            return
-
-    fig.canvas.mpl_connect('motion_notify_event', on_move)
+    plt.tight_layout()
     plt.show()
     return fig, axes
 
+
+# -------------------------- CLI entry -----------------------------------
 if __name__ == '__main__':
     x_temp, y_temp = load_temperature_data()
     x_long, y_long = load_long_data()
 
     quadratic_fit_func = poly_fit(2)
+    quad_model = quadratic_fit_func(x_temp, y_temp)
+
     exp_fit_func = exp_fit
-
-    quadratic_model = quadratic_fit_func(x_temp, y_temp)
     exp_model = exp_fit_func(x_temp, y_temp)
-
-    def reuse_quadratic(x_arr, y_arr):
-        return quadratic_model
-
-    def reuse_exp(x_arr, y_arr):
-        return exp_model
 
     datasets = [
         (x_temp, y_temp, quadratic_fit_func, 'Quadratic Fit (good recently / bad long-term fit)', '', 'Temperature'),
         (x_temp, y_temp, exp_fit_func, 'Exponential Fit (good recently / good long-term fit)', '', 'Temperature'),
-        (x_long, y_long, reuse_quadratic, 'Extrapolation (Quadratic)', 'Year', 'Temperature'),
-        (x_long, y_long, reuse_exp, 'Extrapolation (Exponential)', 'Year', 'Temperature'),
+        (x_long, y_long, lambda *_: quad_model, 'Extrapolation (Quadratic)', 'Year', 'Temperature'),
+        (x_long, y_long, lambda *_: exp_model, 'Extrapolation (Exponential)', 'Year', 'Temperature'),
     ]
 
-    interactive_regression_grid(datasets, nrows=2, ncols=2,
-                                scatter_size=30, future_end=2050,
-                                recent_data=(x_temp, y_temp))
+    interactive_regression_grid(
+        datasets,
+        nrows=2,
+        ncols=2,
+        scatter_size=30,
+        future_end=2050,
+        recent_data=(x_temp, y_temp),
+    )
 
 
 ---
@@ -357,44 +382,36 @@ load_long_data        = lambda: _load('long')
 infer.py
 ---
 """
-Module containing long_term_inference  simplified version without background.
+infer.py
+--------
+Historical reconstruction plot with optional hover interactivity.
 """
+
+from __future__ import annotations
 
 import numpy as np
 import matplotlib
-matplotlib.use("TkAgg")                # force interactive backend
+matplotlib.use("TkAgg")               # force interactive backend
 import matplotlib.pyplot as plt
 plt.rcParams["backend"] = "TkAgg"
 
+from interactivity import attach_hover
+
 
 def long_term_inference(
-        fitted_model: callable,
-        xobs: np.ndarray,
-        yobs: np.ndarray,
-        *,
-        start_year: int = 1000,
-        end_year: int = 2025,
-        title: str | None = None,
-        xlabel: str = "Year",
-        ylabel: str = "Value",
-        scatter_size: int = 50,
-        interactive: bool = True,
+    fitted_model: callable,
+    xobs: np.ndarray,
+    yobs: np.ndarray,
+    *,
+    start_year: int = 1000,
+    end_year: int = 2025,
+    title: str | None = None,
+    xlabel: str = "Year",
+    ylabel: str = "Value",
+    scatter_size: int = 50,
+    interactive: bool = True,
 ) -> tuple[plt.Figure, plt.Axes]:
-    """
-    Plot historical inference for a *fitted_model* over [start_year, end_year].
-
-    Parameters
-    ----------
-    fitted_model : callable
-        Function f(years) -> predicted values.
-    xobs, yobs : np.ndarray
-        Observations used in the original fit
-    start_year, end_year : int
-        Inclusive time window.
-    interactive : bool
-        If True, enable hover interactivity; otherwise, disable it.
-    """
-    # --- Sanity checks -----------------------------------------------------
+    # --- Sanity checks --------------------------------------------------
     start_year, end_year = int(start_year), int(end_year)
     if start_year > end_year:
         start_year, end_year = end_year, start_year
@@ -402,12 +419,12 @@ def long_term_inference(
     years_all = np.arange(start_year, end_year + 1)
     preds = fitted_model(years_all)
 
-    # --- Prepare canvas ----------------------------------------------------
+    # --- Prepare canvas -------------------------------------------------
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.set_facecolor("#ffffff")
     ax.plot(years_all, preds, label="Model prediction", zorder=3)
 
-    # Labels / legend -------------------------------------------------------
+    # Labels / legend ----------------------------------------------------
     ax.set(
         xlabel=xlabel,
         ylabel=ylabel,
@@ -415,98 +432,157 @@ def long_term_inference(
     )
     ax.legend()
 
-    #  Hover interactivity ------------------------------------------------
+    # Hover interactivity ------------------------------------------------
     if interactive:
-        halo, = ax.plot(
-            [], [], "o",
-            ms=np.sqrt(scatter_size) * 2,
-            mfc="none", mec="yellow", mew=2, zorder=5,
+        attach_hover(
+            ax,
+            xobs,
+            yobs,
+            fitted_model,
+            scatter_size=scatter_size,
+            start=start_year,
+            end=end_year,
         )
-        ann = ax.annotate(
-            "",
-            xy=(0, 0),
-            xytext=(10, 10),
-            textcoords="offset points",
-            bbox=dict(boxstyle="round", fc="w"),
-            arrowprops=dict(arrowstyle="->"),
-            zorder=6,
-        )
-        ann.set_visible(False)
-
-        def _on_move(event):
-            if event.inaxes is not ax or event.xdata is None:
-                ann.set_visible(False)
-                halo.set_data([], [])
-                fig.canvas.draw_idle()
-                return
-
-            year = int(round(event.xdata))
-            year = np.clip(year, start_year, end_year)
-            pred_val = float(fitted_model(year))
-
-            mask = xobs == year
-            if mask.any():
-                obs_val = float(yobs[mask][0])
-                ann_text = f"Year : {year}\nObs  : {obs_val:.2f}\nPred: {pred_val:.2f}"
-                halo_y = obs_val
-            else:
-                ann_text = f"Year : {year}\nPred: {pred_val:.2f}"
-                halo_y = pred_val
-
-            ann.xy = (year, halo_y)
-            ann.set_text(ann_text)
-            halo.set_data([year], [halo_y])
-            ann.set_visible(True)
-            fig.canvas.draw_idle()
-
-        fig.canvas.mpl_connect("motion_notify_event", _on_move)
 
     plt.tight_layout()
     return fig, ax
 
 
 ---
+interactivity.py
+---
+"""
+interactivity.py
+----------------
+Reusable yellow-halo hover helper for matplotlib Axes.
+
+attach_hover(ax, x_obs, y_obs, predictor, *, scatter_size=50, start=None, end=None)
+     ax           : target Axes
+    x_obs, y_obs : 1-D NumPy arrays of observed data
+     predictor    : callable(years) -> predictions
+    scatter_size : radius basis for halo
+    start / end  : clamp range for the cursor (defaults to data extents)
+
+Returns (annotation, halo_line) so callers may further tweak style if desired.
+"""
+from __future__ import annotations
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+def attach_hover(
+    ax: plt.Axes,
+    x_obs: np.ndarray,
+    y_obs: np.ndarray,
+    predictor,
+    *,
+    scatter_size: int = 50,
+    start: int | None = None,
+    end: int | None = None,
+):
+    fig = ax.figure
+    halo, = ax.plot(
+        [], [],
+        "o",
+        ms=np.sqrt(scatter_size) * 2,
+        mfc="none",
+        mec="yellow",
+        mew=2,
+        zorder=5,
+    )
+    ann = ax.annotate(
+        "",
+        xy=(0, 0),
+        xytext=(10, 10),
+        textcoords="offset points",
+        bbox=dict(boxstyle="round", fc="w"),
+        arrowprops=dict(arrowstyle="->"),
+        zorder=6,
+    )
+    ann.set_visible(False)
+
+    xmin = int(np.min(x_obs)) if start is None else int(start)
+    xmax = int(np.max(x_obs)) if end   is None else int(end)
+
+    def _on_move(event):
+        if event.inaxes is not ax or event.xdata is None:
+            ann.set_visible(False)
+            halo.set_data([], [])
+            fig.canvas.draw_idle()
+            return
+
+        yr = int(round(event.xdata))
+        yr = max(xmin, min(xmax, yr))
+        pred = float(predictor(yr))
+
+        mask = x_obs == yr
+        if mask.any():
+            obs = float(y_obs[mask][0])
+            halo_y = obs
+            text = f"Year : {yr}\nObs  : {obs:.2f}\nPred: {pred:.2f}"
+        else:
+            halo_y = pred
+            text = f"Year : {yr}\nPred: {pred:.2f}"
+
+        ann.xy = (yr, halo_y)
+        ann.set_text(text)
+        halo.set_data([yr], [halo_y])
+        ann.set_visible(True)
+        fig.canvas.draw_idle()
+
+    fig.canvas.mpl_connect("motion_notify_event", _on_move)
+    return ann, halo
+
+
+---
 main.py
 ---
 #!/usr/bin/env python3
+"""
+main.py
+-------
+Two-by-two interactive grid comparing regression fits.
+"""
+
+from __future__ import annotations
+
 import sys
 import numpy as np
 
-# Attempt to import plotting libraries
+# --- matplotlib bootstrap ----------------------------------------------
 def _import_matplotlib():
     try:
         import matplotlib
-        matplotlib.use('TkAgg')  # Use TkAgg for interactivity
+        matplotlib.use("TkAgg")
         import matplotlib.pyplot as plt
-        import matplotlib.image as mpimg
-        return plt, mpimg
+        return plt
     except ImportError:
         sys.stderr.write(
             "Error: matplotlib is required for plotting but is not installed.\n"
-            "Please install it via 'pip install matplotlib' or your environment manager.\n"
+            "Please install it via 'pip install matplotlib'.\n"
         )
         sys.exit(1)
 
-plt, mpimg = _import_matplotlib()
-plt.rcParams['backend'] = 'TkAgg'
+
+plt = _import_matplotlib()
+plt.rcParams["backend"] = "TkAgg"
 
 from scipy.optimize import curve_fit
 from statsmodels.nonparametric.smoothers_lowess import lowess
+from interactivity import attach_hover
 from data_loader import load_temperature_data, load_long_data
 
-# ---------- Fit helpers ----------
 
+# ---------- Fit helpers -------------------------------------------------
 def poly_fit(degree):
-    """Polynomial fit of specified degree."""
     def fit(x_arr, y_arr):
         coeffs = np.polyfit(x_arr, y_arr, degree)
         return lambda x_new: np.polyval(coeffs, x_new)
     return fit
 
+
 def exp_fit(x: np.ndarray, y: np.ndarray):
-    """
-    Fit y = c * exp(r*(x - x0)) + b, with data-driven initial guess.
-    """
     x0 = x[0]
 
     def _model(x_vals, c, r, b):
@@ -529,26 +605,31 @@ def exp_fit(x: np.ndarray, y: np.ndarray):
         mean_y = float(np.mean(y))
         return lambda x_new: np.full_like(x_new, mean_y, dtype=float)
 
+
 def loess_fit(x_arr, y_arr, frac=0.3):
     loess_res = lowess(y_arr, x_arr, frac=frac, return_sorted=True)
     xs, ys = loess_res[:, 0], loess_res[:, 1]
     return lambda x_new: np.interp(x_new, xs, ys)
 
-# ---------- Interactive grid helper ----------
 
-def interactive_regression_grid(datasets, nrows=2, ncols=2,
-                                scatter_size=50, future_end=2050,
-                                recent_data=None):
+# ---------- Interactive grid helper ------------------------------------
+def interactive_regression_grid(
+    datasets,
+    nrows=2,
+    ncols=2,
+    scatter_size=50,
+    future_end=2050,
+    recent_data=None,
+):
     fig, axes = plt.subplots(nrows, ncols, figsize=(12, 8))
     axes = axes.flatten()
 
-    annotations, halos, plot_data = [], [], []
     for ax, (x_arr, y_arr, fit_func, title, xlabel, ylabel) in zip(axes, datasets):
         model = fit_func(x_arr, y_arr)
         y_pred = model(x_arr)
         last_x = int(np.max(x_arr))
 
-        ax.scatter(x_arr, y_arr, s=scatter_size, label='Data', zorder=2)
+        ax.scatter(x_arr, y_arr, s=scatter_size, label="Data", zorder=2)
         if recent_data and 'Extrapolation' in title:
             x_recent, y_recent = recent_data
             ax.scatter(x_recent, y_recent, s=scatter_size, label='Recent Data', zorder=2)
@@ -564,79 +645,48 @@ def interactive_regression_grid(datasets, nrows=2, ncols=2,
         ax.set_ylabel(ylabel)
         ax.legend()
 
-        ann = ax.annotate('', xy=(0,0), xytext=(10,10), textcoords='offset points',
-                          bbox=dict(boxstyle='round', fc='w'), arrowprops=dict(arrowstyle='->'))
-        ann.set_visible(False)
-        halo, = ax.plot([], [], 'o', ms=np.sqrt(scatter_size), mec='yellow',
-                        mfc='none', mew=2, zorder=4)
+        # Re-use consolidated hover logic
+        attach_hover(
+            ax,
+            x_arr,
+            y_arr,
+            model,
+            scatter_size=scatter_size,
+            start=int(x_arr.min()),
+            end=int(future_end),
+        )
 
-        annotations.append(ann)
-        halos.append(halo)
-        plot_data.append((ax, x_arr, y_arr, model, last_x))
-
-    def on_move(event):
-        for ann, halo in zip(annotations, halos):
-            ann.set_visible(False)
-            halo.set_data([], [])
-        if event.inaxes is None or event.xdata is None:
-            fig.canvas.draw_idle()
-            return
-        for (ax, x_arr, y_arr, model, last_x), ann, halo in zip(plot_data, annotations, halos):
-            if event.inaxes != ax:
-                continue
-            year_hover = event.xdata
-            if year_hover > last_x:
-                year = int(round(year_hover))
-                y_val = model(year)
-                obs_str = '-'
-                pred_str = f'{y_val:.2f}'
-                ann.xy = (year, y_val)
-                ann.set_text(f"Year: {year}\nPredicted: {pred_str}")
-                halo.set_data([year], [y_val])
-            else:
-                idx = np.argmin(np.abs(x_arr - year_hover))
-                year = int(x_arr[idx])
-                y_val = y_arr[idx]
-                pred_val = model(year)
-                obs_str = f'{y_val:.2f}'
-                pred_str = f'{pred_val:.2f}'
-                ann.xy = (year, y_val)
-                ann.set_text(f"Year: {year}\nObserved: {obs_str}\nPredicted: {pred_str}")
-                halo.set_data([year], [y_val])
-            ann.set_visible(True)
-            fig.canvas.draw_idle()
-            return
-
-    fig.canvas.mpl_connect('motion_notify_event', on_move)
+    plt.tight_layout()
     plt.show()
     return fig, axes
 
+
+# -------------------------- CLI entry -----------------------------------
 if __name__ == '__main__':
     x_temp, y_temp = load_temperature_data()
     x_long, y_long = load_long_data()
 
     quadratic_fit_func = poly_fit(2)
+    quad_model = quadratic_fit_func(x_temp, y_temp)
+
     exp_fit_func = exp_fit
-
-    quadratic_model = quadratic_fit_func(x_temp, y_temp)
     exp_model = exp_fit_func(x_temp, y_temp)
-
-    def reuse_quadratic(x_arr, y_arr):
-        return quadratic_model
-
-    def reuse_exp(x_arr, y_arr):
-        return exp_model
 
     datasets = [
         (x_temp, y_temp, quadratic_fit_func, 'Quadratic Fit (good recently / bad long-term fit)', '', 'Temperature'),
         (x_temp, y_temp, exp_fit_func, 'Exponential Fit (good recently / good long-term fit)', '', 'Temperature'),
-        (x_long, y_long, reuse_quadratic, 'Extrapolation (Quadratic)', 'Year', 'Temperature'),
-        (x_long, y_long, reuse_exp, 'Extrapolation (Exponential)', 'Year', 'Temperature'),
+        (x_long, y_long, lambda *_: quad_model, 'Extrapolation (Quadratic)', 'Year', 'Temperature'),
+        (x_long, y_long, lambda *_: exp_model, 'Extrapolation (Exponential)', 'Year', 'Temperature'),
     ]
 
-    interactive_regression_grid(datasets, nrows=2, ncols=2,
-                                scatter_size=30, future_end=2050,
-                                recent_data=(x_temp, y_temp))
+    interactive_regression_grid(
+        datasets,
+        nrows=2,
+        ncols=2,
+        scatter_size=30,
+        future_end=2050,
+        recent_data=(x_temp, y_temp),
+    )
 
 
 ---
@@ -930,57 +980,49 @@ subplot.py
 ---
 #!/usr/bin/env python3
 """
-Interactive Regression Explorer - sun-fixed edition
-(extended to run a post-GUI historical inference)
+subplot.py
+----------
+Tkinter GUI for interactive regression exploration.
+After user closes the main plot, a historical reconstruction is shown.
 """
+
+from __future__ import annotations
 
 import numpy as np
 from functools import partial
 from scipy.optimize import curve_fit
 from statsmodels.nonparametric.smoothers_lowess import lowess
-import data_loader
 
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 plt.rcParams["backend"] = "TkAgg"
 import matplotlib.image as mpimg
+
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+import data_loader
+from interactivity import attach_hover
 from infer import long_term_inference
 
-# -- Globals to store selected dataset info --
-dataset_name: str = ""
-xmax: float = 0.0
-ymax: float = 0.0
 
-DATASET_KEYS = {
-    "Temperature": "temperature",
-    "CO2 & Temp":  "co2",
-    "GIS":         "gis",
-}
-
+# ---------------- Fit helpers ------------------------------------------
 def poly_fit(degree: int):
     def fit(x: np.ndarray, y: np.ndarray):
         coeffs = np.polyfit(x, y, degree)
         return lambda x_new: np.polyval(coeffs, x_new)
     return fit
 
+
 def exp_fit(x: np.ndarray, y: np.ndarray):
-    """
-    Fit y = c * exp(r*(x - x0)) + b, with data-driven initial guess.
-    """
     x0 = x[0]
 
     def _model(x_vals, c, r, b):
         return c * np.exp(r * (x_vals - x0)) + b
 
-    # 1. Baseline shift
     b0 = float(np.min(y))
-    # 2. Starting amplitude
     c0 = float(y[0] - b0)
-    # 3. Rate estimate (guard against non-positive)
     if c0 > 0 and (y[-1] - b0) > 0:
         r0 = float(np.log((y[-1] - b0) / c0) / (x[-1] - x0))
     else:
@@ -989,16 +1031,10 @@ def exp_fit(x: np.ndarray, y: np.ndarray):
     p0 = (c0, r0, b0)
 
     try:
-        params, _ = curve_fit(
-            _model,
-            x, y,
-            p0=p0,
-            maxfev=5000,
-        )
+        params, _ = curve_fit(_model, x, y, p0=p0, maxfev=5000)
         return lambda x_new: _model(x_new, *params)
     except Exception as exc:
         print(f"[exp_fit] Fit failed with p0={p0}: {exc}")
-        # fallback to flat model
         mean_y = float(np.mean(y))
         return lambda x_new: np.full_like(x_new, mean_y, dtype=float)
 
@@ -1008,18 +1044,20 @@ def loess_fit(x: np.ndarray, y: np.ndarray, frac: float = 0.3):
     xs, ys = smoothed[:, 0], smoothed[:, 1]
     return lambda x_new: np.interp(x_new, xs, ys)
 
+
+# ---------------- Single-plot helper -----------------------------------
 def plot_regression(
-        x: np.ndarray,
-        y: np.ndarray,
-        fit_func,
-        *,
-        title: str,
-        xlabel: str,
-        ylabel: str,
-        scatter_size: int = 50,
-        future_end: int | None = None,
-        show_background: bool = False,
-        interactive: bool = True,
+    x: np.ndarray,
+    y: np.ndarray,
+    fit_func,
+    *,
+    title: str,
+    xlabel: str,
+    ylabel: str,
+    scatter_size: int = 50,
+    future_end: int | None = None,
+    show_background: bool = False,
+    interactive: bool = True,
 ):
     fig, ax = plt.subplots(figsize=(7, 5))
     ax.set_facecolor("#ffffff")
@@ -1049,40 +1087,21 @@ def plot_regression(
             print(f"[plot_regression] Warning: could not load background: {exc}")
 
     if interactive:
-        halo, = ax.plot([], [], "o", ms=np.sqrt(scatter_size) * 2, mfc="none", mec="yellow", mew=2, zorder=5)
-        ann = ax.annotate("", xy=(0, 0), xytext=(10, 10), textcoords="offset points",
-                           bbox=dict(boxstyle="round", fc="w"), arrowprops=dict(arrowstyle="->"), zorder=6)
-        ann.set_visible(False)
-
-        def _on_move(event):
-            if event.inaxes is not ax or event.xdata is None:
-                ann.set_visible(False)
-                halo.set_data([], [])
-                fig.canvas.draw_idle()
-                return
-
-            year = int(round(event.xdata))
-            year = np.clip(year, int(x.min()), future_end or last_x)
-            idx = np.where(x == year)[0]
-
-            if idx.size:
-                obs_val = y[idx[0]]
-                disp_obs = f"{obs_val:.2f}"
-                y_val = obs_val
-            else:
-                disp_obs = "-"
-                y_val = model(year)
-
-            ann.xy = (year, y_val)
-            ann.set_text(f"Year : {year}\nObs  : {disp_obs}\nPred: {model(year):.2f}")
-            halo.set_data([year], [y_val])
-            ann.set_visible(True)
-            fig.canvas.draw_idle()
-
-        fig.canvas.mpl_connect("motion_notify_event", _on_move)
+        attach_hover(
+            ax,
+            x,
+            y,
+            model,
+            scatter_size=scatter_size,
+            start=int(x.min()),
+            end=future_end or last_x,
+        )
 
     plt.show()
+    return model
 
+
+# ---------------- Tk GUI -----------------------------------------------
 class RegressionApp(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -1114,6 +1133,7 @@ class RegressionApp(tk.Tk):
 
         self._build_ui()
 
+    # -------- UI builders & callbacks -----------------------------------
     def _build_ui(self):
         ds_frame = ttk.LabelFrame(self, text="Dataset")
         ds_frame.pack(fill="x", padx=10, pady=5)
@@ -1161,40 +1181,45 @@ class RegressionApp(tk.Tk):
             messagebox.showerror("Load error", str(exc))
             return
 
-        global dataset_name, xmax, ymax
-        dataset_name = DATASET_KEYS[name]
-        xmax = float(np.max(x))
-        ymax = float(np.max(y))
-
         fit_func = self.methods[self.method_var.get()]
-        model = fit_func(x, y)
-        self._last_model = model
-        self._last_x = x
-        self._last_y = y
-        self._last_show_bg = bool(self.bg_var.get())
-        self._last_interactive = bool(self.interactive_var.get())
-
-        plot_regression(
-            x, y,
+        model = plot_regression(
+            x,
+            y,
             fit_func,
             title=f"{self.method_var.get()} Fit",
             xlabel="Year",
             ylabel="Temperature",
             scatter_size=50,
             future_end=self.future_var.get(),
-            show_background=self._last_show_bg,
-            interactive=self._last_interactive,
+            show_background=bool(self.bg_var.get()),
+            interactive=bool(self.interactive_var.get()),
         )
 
+        self._last_model = model
+        self._last_x = x
+        self._last_y = y
+        self._last_show_bg = bool(self.bg_var.get())
+        self._last_interactive = bool(self.interactive_var.get())
+
+    # API for caller -----------------------------------------------------
     def get_last_fit(self):
-        return self._last_model, self._last_x, self._last_y, self._last_show_bg, self._last_interactive
+        return (
+            self._last_model,
+            self._last_x,
+            self._last_y,
+            self._last_show_bg,
+            self._last_interactive,
+        )
+
+
+# ---------------- Script entry-point ------------------------------------
 def run():
     app = RegressionApp()
     app.mainloop()
 
-    model, x_obs, y_obs, show_bg, interactive = app.get_last_fit()  # Include interactive here
+    model, x_obs, y_obs, show_bg, interactive = app.get_last_fit()
     if model is None:
-        print("No plot was generated - nothing to infer. Exiting.")
+        print("No plot was generated â€“ nothing to infer. Exiting.")
         return
 
     print("Running historical inference ...")
@@ -1206,7 +1231,7 @@ def run():
         start_year=1000,
         end_year=1950,
         title="Historical reconstruction (1000-1950)",
-        interactive=interactive,  # Crucial fix here
+        interactive=interactive,
     )
 
     if show_bg:
@@ -1215,8 +1240,8 @@ def run():
             x0, _ = ax.get_xlim()
             y0_existing, _ = ax.get_ylim()
             y0 = min(y0_existing, float(y_long.min()), float(y_obs.min()))
-            ax.set_ylim(y0, ymax)
-            ax.imshow(bg, aspect="auto", extent=(x0, xmax, y0, ymax), zorder=0, alpha=1)
+            ax.set_ylim(y0, float(np.max([y_long.max(), y_obs.max()])))
+            ax.imshow(bg, aspect="auto", extent=(x0, x_obs.max(), y0, ax.get_ylim()[1]), zorder=0, alpha=1)
         except Exception as exc:
             print(f"[run] Warning: could not load background: {exc}")
 
@@ -1228,5 +1253,6 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 ---

@@ -1,56 +1,48 @@
 #!/usr/bin/env python3
 """
-Interactive Regression Explorer - sun-fixed edition
-(extended to run a post-GUI historical inference)
+subplot.py
+----------
+Tkinter GUI for interactive regression exploration.
+After user closes the main plot, a historical reconstruction is shown.
 """
+
+from __future__ import annotations
 
 import numpy as np
 from functools import partial
 from scipy.optimize import curve_fit
 from statsmodels.nonparametric.smoothers_lowess import lowess
-import data_loader
 
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 plt.rcParams["backend"] = "TkAgg"
 import matplotlib.image as mpimg
+
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+import data_loader
+from interactivity import attach_hover
 from infer import long_term_inference
 
-# -- Globals to store selected dataset info --
-dataset_name: str = ""
-xmax: float = 0.0
-ymax: float = 0.0
 
-DATASET_KEYS = {
-    "Temperature": "temperature",
-    "CO2 & Temp":  "co2",
-    "GIS":         "gis",
-}
-
+# ---------------- Fit helpers ------------------------------------------
 def poly_fit(degree: int):
     def fit(x: np.ndarray, y: np.ndarray):
         coeffs = np.polyfit(x, y, degree)
         return lambda x_new: np.polyval(coeffs, x_new)
     return fit
 
+
 def exp_fit(x: np.ndarray, y: np.ndarray):
-    """
-    Fit y = c * exp(r*(x - x0)) + b, with data-driven initial guess.
-    """
     x0 = x[0]
 
     def _model(x_vals, c, r, b):
         return c * np.exp(r * (x_vals - x0)) + b
 
-    # 1. Baseline shift
     b0 = float(np.min(y))
-    # 2. Starting amplitude
     c0 = float(y[0] - b0)
-    # 3. Rate estimate (guard against non-positive)
     if c0 > 0 and (y[-1] - b0) > 0:
         r0 = float(np.log((y[-1] - b0) / c0) / (x[-1] - x0))
     else:
@@ -59,16 +51,10 @@ def exp_fit(x: np.ndarray, y: np.ndarray):
     p0 = (c0, r0, b0)
 
     try:
-        params, _ = curve_fit(
-            _model,
-            x, y,
-            p0=p0,
-            maxfev=5000,
-        )
+        params, _ = curve_fit(_model, x, y, p0=p0, maxfev=5000)
         return lambda x_new: _model(x_new, *params)
     except Exception as exc:
         print(f"[exp_fit] Fit failed with p0={p0}: {exc}")
-        # fallback to flat model
         mean_y = float(np.mean(y))
         return lambda x_new: np.full_like(x_new, mean_y, dtype=float)
 
@@ -78,18 +64,20 @@ def loess_fit(x: np.ndarray, y: np.ndarray, frac: float = 0.3):
     xs, ys = smoothed[:, 0], smoothed[:, 1]
     return lambda x_new: np.interp(x_new, xs, ys)
 
+
+# ---------------- Single-plot helper -----------------------------------
 def plot_regression(
-        x: np.ndarray,
-        y: np.ndarray,
-        fit_func,
-        *,
-        title: str,
-        xlabel: str,
-        ylabel: str,
-        scatter_size: int = 50,
-        future_end: int | None = None,
-        show_background: bool = False,
-        interactive: bool = True,
+    x: np.ndarray,
+    y: np.ndarray,
+    fit_func,
+    *,
+    title: str,
+    xlabel: str,
+    ylabel: str,
+    scatter_size: int = 50,
+    future_end: int | None = None,
+    show_background: bool = False,
+    interactive: bool = True,
 ):
     fig, ax = plt.subplots(figsize=(7, 5))
     ax.set_facecolor("#ffffff")
@@ -119,40 +107,21 @@ def plot_regression(
             print(f"[plot_regression] Warning: could not load background: {exc}")
 
     if interactive:
-        halo, = ax.plot([], [], "o", ms=np.sqrt(scatter_size) * 2, mfc="none", mec="yellow", mew=2, zorder=5)
-        ann = ax.annotate("", xy=(0, 0), xytext=(10, 10), textcoords="offset points",
-                           bbox=dict(boxstyle="round", fc="w"), arrowprops=dict(arrowstyle="->"), zorder=6)
-        ann.set_visible(False)
-
-        def _on_move(event):
-            if event.inaxes is not ax or event.xdata is None:
-                ann.set_visible(False)
-                halo.set_data([], [])
-                fig.canvas.draw_idle()
-                return
-
-            year = int(round(event.xdata))
-            year = np.clip(year, int(x.min()), future_end or last_x)
-            idx = np.where(x == year)[0]
-
-            if idx.size:
-                obs_val = y[idx[0]]
-                disp_obs = f"{obs_val:.2f}"
-                y_val = obs_val
-            else:
-                disp_obs = "-"
-                y_val = model(year)
-
-            ann.xy = (year, y_val)
-            ann.set_text(f"Year : {year}\nObs  : {disp_obs}\nPred: {model(year):.2f}")
-            halo.set_data([year], [y_val])
-            ann.set_visible(True)
-            fig.canvas.draw_idle()
-
-        fig.canvas.mpl_connect("motion_notify_event", _on_move)
+        attach_hover(
+            ax,
+            x,
+            y,
+            model,
+            scatter_size=scatter_size,
+            start=int(x.min()),
+            end=future_end or last_x,
+        )
 
     plt.show()
+    return model
 
+
+# ---------------- Tk GUI -----------------------------------------------
 class RegressionApp(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -184,6 +153,7 @@ class RegressionApp(tk.Tk):
 
         self._build_ui()
 
+    # -------- UI builders & callbacks -----------------------------------
     def _build_ui(self):
         ds_frame = ttk.LabelFrame(self, text="Dataset")
         ds_frame.pack(fill="x", padx=10, pady=5)
@@ -231,40 +201,45 @@ class RegressionApp(tk.Tk):
             messagebox.showerror("Load error", str(exc))
             return
 
-        global dataset_name, xmax, ymax
-        dataset_name = DATASET_KEYS[name]
-        xmax = float(np.max(x))
-        ymax = float(np.max(y))
-
         fit_func = self.methods[self.method_var.get()]
-        model = fit_func(x, y)
-        self._last_model = model
-        self._last_x = x
-        self._last_y = y
-        self._last_show_bg = bool(self.bg_var.get())
-        self._last_interactive = bool(self.interactive_var.get())
-
-        plot_regression(
-            x, y,
+        model = plot_regression(
+            x,
+            y,
             fit_func,
             title=f"{self.method_var.get()} Fit",
             xlabel="Year",
             ylabel="Temperature",
             scatter_size=50,
             future_end=self.future_var.get(),
-            show_background=self._last_show_bg,
-            interactive=self._last_interactive,
+            show_background=bool(self.bg_var.get()),
+            interactive=bool(self.interactive_var.get()),
         )
 
+        self._last_model = model
+        self._last_x = x
+        self._last_y = y
+        self._last_show_bg = bool(self.bg_var.get())
+        self._last_interactive = bool(self.interactive_var.get())
+
+    # API for caller -----------------------------------------------------
     def get_last_fit(self):
-        return self._last_model, self._last_x, self._last_y, self._last_show_bg, self._last_interactive
+        return (
+            self._last_model,
+            self._last_x,
+            self._last_y,
+            self._last_show_bg,
+            self._last_interactive,
+        )
+
+
+# ---------------- Script entry-point ------------------------------------
 def run():
     app = RegressionApp()
     app.mainloop()
 
-    model, x_obs, y_obs, show_bg, interactive = app.get_last_fit()  # Include interactive here
+    model, x_obs, y_obs, show_bg, interactive = app.get_last_fit()
     if model is None:
-        print("No plot was generated - nothing to infer. Exiting.")
+        print("No plot was generated – nothing to infer. Exiting.")
         return
 
     print("Running historical inference ...")
@@ -276,7 +251,7 @@ def run():
         start_year=1000,
         end_year=1950,
         title="Historical reconstruction (1000-1950)",
-        interactive=interactive,  # Crucial fix here
+        interactive=interactive,
     )
 
     if show_bg:
@@ -285,8 +260,8 @@ def run():
             x0, _ = ax.get_xlim()
             y0_existing, _ = ax.get_ylim()
             y0 = min(y0_existing, float(y_long.min()), float(y_obs.min()))
-            ax.set_ylim(y0, ymax)
-            ax.imshow(bg, aspect="auto", extent=(x0, xmax, y0, ymax), zorder=0, alpha=1)
+            ax.set_ylim(y0, float(np.max([y_long.max(), y_obs.max()])))
+            ax.imshow(bg, aspect="auto", extent=(x0, x_obs.max(), y0, ax.get_ylim()[1]), zorder=0, alpha=1)
         except Exception as exc:
             print(f"[run] Warning: could not load background: {exc}")
 
