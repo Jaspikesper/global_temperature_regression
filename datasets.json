@@ -1,0 +1,10 @@
+{
+  "default_columns": ["year", "temperature_anomaly"],
+
+  "datasets": {
+    "temperature": "Temperature_Data.csv",
+    "co2":          "merged_co2_temp.csv",
+    "gis":          "gistemp.csv",
+    "long":         "long.csv"
+  }
+}

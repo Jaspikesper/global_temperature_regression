@@ -12,6 +12,7 @@ import numpy as np
 from functools import partial
 from scipy.optimize import curve_fit
 from statsmodels.nonparametric.smoothers_lowess import lowess
+from models import REGISTRY                              # ✔ central helper list
 
 import matplotlib
 matplotlib.use("TkAgg")
@@ -133,15 +134,7 @@ class RegressionApp(tk.Tk):
             "CO2 & Temp": data_loader.load_co2_data,
             "GIS": data_loader.load_gis_data,
         }
-        self.methods = {
-            "Linear": poly_fit(1),
-            "Quadratic": poly_fit(2),
-            "Cubic": poly_fit(3),
-            "Quartic": poly_fit(4),
-            "Exponential": exp_fit,
-            "LOESS": loess_fit,
-        }
-
+        self.methods = dict(REGISTRY)
         self._last_model = None
         self._last_x = None
         self._last_y = None
