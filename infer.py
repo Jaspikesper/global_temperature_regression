@@ -1,5 +1,5 @@
 """
-Module containing long_term_inference – simplified version without background.
+Module containing long_term_inference  simplified version without background.
 """
 
 import numpy as np
@@ -57,7 +57,7 @@ def long_term_inference(
     )
     ax.legend()
 
-    # ── Hover interactivity ------------------------------------------------
+    #  Hover interactivity ------------------------------------------------
     if interactive:
         halo, = ax.plot(
             [], [], "o",

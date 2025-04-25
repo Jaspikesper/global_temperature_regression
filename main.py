@@ -35,7 +35,7 @@ def poly_fit(degree):
 
 def exp_fit(x: np.ndarray, y: np.ndarray):
     """
-    Fit y ≈ c * exp(r*(x - x0)) + b, with data-driven initial guess.
+    Fit y = c * exp(r*(x - x0)) + b, with data-driven initial guess.
     """
     x0 = x[0]
 

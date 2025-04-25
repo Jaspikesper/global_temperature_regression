@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Interactive Regression Explorer – sun‑fixed edition
-(extended to run a post‑GUI historical inference)
+Interactive Regression Explorer - sun-fixed edition
+(extended to run a post-GUI historical inference)
 """
 
 import numpy as np
@@ -20,7 +20,7 @@ from tkinter import ttk, messagebox
 
 from infer import long_term_inference
 
-# ── Globals to store selected dataset info ──
+# -- Globals to store selected dataset info --
 dataset_name: str = ""
 xmax: float = 0.0
 ymax: float = 0.0
@@ -39,7 +39,7 @@ def poly_fit(degree: int):
 
 def exp_fit(x: np.ndarray, y: np.ndarray):
     """
-    Fit y ≈ c * exp(r*(x - x0)) + b, with data-driven initial guess.
+    Fit y = c * exp(r*(x - x0)) + b, with data-driven initial guess.
     """
     x0 = x[0]
 
@@ -140,7 +140,7 @@ def plot_regression(
                 disp_obs = f"{obs_val:.2f}"
                 y_val = obs_val
             else:
-                disp_obs = "–"
+                disp_obs = "-"
                 y_val = model(year)
 
             ann.xy = (year, y_val)
@@ -264,10 +264,10 @@ def run():
 
     model, x_obs, y_obs, show_bg, interactive = app.get_last_fit()  # Include interactive here
     if model is None:
-        print("No plot was generated – nothing to infer. Exiting.")
+        print("No plot was generated - nothing to infer. Exiting.")
         return
 
-    print("Running historical inference …")
+    print("Running historical inference ...")
     x_long, y_long = data_loader.load_long_data()
     fig, ax = long_term_inference(
         model,
@@ -275,7 +275,7 @@ def run():
         y_long,
         start_year=1000,
         end_year=1950,
-        title="Historical reconstruction (1000‑1950)",
+        title="Historical reconstruction (1000-1950)",
         interactive=interactive,  # Crucial fix here
     )
 
@@ -290,7 +290,7 @@ def run():
         except Exception as exc:
             print(f"[run] Warning: could not load background: {exc}")
 
-    ax.scatter(x_long, y_long, s=25, c="blue", label="Long‑Term Temperature (Obs.)", zorder=4)
+    ax.scatter(x_long, y_long, s=25, c="blue", label="Long-Term Temperature (Obs.)", zorder=4)
     ax.scatter(x_obs, y_obs, s=25, c="blue", alpha=0.5, zorder=4)
     ax.legend()
     plt.show()
